@@ -2,7 +2,9 @@ node_modules
 dist
 .env
 .env.local
+.DS_Store
 backend/data/*.json
+backend/data/*.db
 *.log
 __pycache__/
 *.py[cod]

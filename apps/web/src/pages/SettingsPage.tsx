@@ -104,9 +104,9 @@ export function SettingsPage() {
 
   async function submitInvite() {
     try {
-      const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee" });
+      const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee", sendEmail: true });
       setEmployees((items) => [employee, ...items]);
-      setNotice({ kind: "success", text: `Invite created for ${employee.email}.` });
+      setNotice({ kind: "success", text: `Invite created for ${employee.email}. ${employee.emailStatus === "sent" ? "Email sent." : "Use the generated invite link below."}` });
     } catch (error) {
       setNotice({ kind: "error", text: `Could not invite employee. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
     }
@@ -257,6 +257,11 @@ export function SettingsPage() {
                         <span>{employee.email}</span>
                       </div>
                       <span>{employee.department}</span>
+                      <div className="employee-access-cell">
+                        <small>{employee.emailStatus === "sent" ? "Email sent" : "Invite link ready"}</small>
+                        {employee.temporaryPassword ? <code>{employee.temporaryPassword}</code> : null}
+                        {employee.inviteLink ? <a href={employee.inviteLink}>Open invite</a> : null}
+                      </div>
                       <select value={employee.status} onChange={(event) => void changeEmployeeStatus(employee, event.target.value as Employee["status"])}>
                         <option value="invited">Invited</option>
                         <option value="active">Active</option>

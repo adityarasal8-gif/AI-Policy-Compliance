@@ -83,11 +83,15 @@ class EmployeeInvite(BaseModel):
     department: str = "General"
     role: Literal["employee", "admin"] = "employee"
     status: Literal["invited", "active", "disabled"] = "invited"
+    sendEmail: bool = True
 
 
 class Employee(EmployeeInvite):
     id: str
     invitedAt: str
+    inviteLink: str | None = None
+    temporaryPassword: str | None = None
+    emailStatus: Literal["sent", "dev_logged", "failed"] = "dev_logged"
 
 
 class SavedSession(BaseModel):
@@ -115,3 +119,38 @@ class AuditEvent(BaseModel):
 
 class PolicyToggle(BaseModel):
     enabled: bool
+
+
+class ReportMetric(BaseModel):
+    label: str
+    value: int
+    suffix: str = ""
+    delta: str = ""
+    tone: Literal["success", "warning", "danger", "neutral"] = "neutral"
+
+
+class ReportBar(BaseModel):
+    label: str
+    value: int
+    tone: Literal["success", "warning", "danger", "neutral"] = "neutral"
+
+
+class ReportSummary(BaseModel):
+    role: Literal["admin", "employee"]
+    generatedAt: str
+    metrics: list[ReportMetric]
+    departmentRisk: list[ReportBar]
+    policyViolations: list[ReportBar]
+    trend: list[int]
+    recentSessions: list[SavedSession]
+    auditEvents: list[AuditEvent]
+
+
+class PolicyComparison(BaseModel):
+    policy: str
+    latestVersion: int
+    previousVersion: int | None = None
+    addedTerms: list[str]
+    removedTerms: list[str]
+    latestText: str
+    previousText: str | None = None

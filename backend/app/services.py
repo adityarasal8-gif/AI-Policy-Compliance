@@ -1,18 +1,36 @@
 from __future__ import annotations
 
 import uuid
+import os
+import secrets
+import smtplib
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from pathlib import Path
 
 from .analyzer import analyze_text
-from .models import AnalyzeRequest, AuditEvent, CompanySettings, ComplianceReport, Employee, EmployeeInvite, PolicyReference, SavedSession
+from .models import (
+    AnalyzeRequest,
+    AuditEvent,
+    CompanySettings,
+    ComplianceReport,
+    Employee,
+    EmployeeInvite,
+    PolicyComparison,
+    PolicyReference,
+    ReportBar,
+    ReportMetric,
+    ReportSummary,
+    SavedSession,
+)
 from .policy_store import PolicyStore
-from .storage import JsonStateStore
+from .storage import SQLiteStateStore
 
 
 class ComplianceService:
     def __init__(self, data_path: Path) -> None:
-        self.storage = JsonStateStore(data_path)
+        self.storage = SQLiteStateStore(data_path, legacy_json_path=data_path.with_name("state.json"))
         self.policy_store = PolicyStore()
         saved_references = self.storage.load_references()
         if saved_references:
@@ -38,11 +56,14 @@ class ComplianceService:
         return settings
 
     def upload_policy(self, text: str, policy_name: str, section: str, owner: str) -> list[PolicyReference]:
-        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner)
+        version = 1 + max(
+            [reference.version for reference in self.policy_store.references if reference.policy == policy_name] or [0]
+        )
+        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner, version=version)
         self.storage.save_references(self.policy_store.references)
         self.add_audit_event(
             title=f"Policy uploaded: {policy_name}",
-            detail=f"{len(references)} policy chunks indexed for {owner}.",
+            detail=f"{len(references)} policy chunks indexed for {owner} as version {version}.",
             owner=owner,
             event_type="policy",
             department=owner,
@@ -84,17 +105,62 @@ class ComplianceService:
         return [session for session in self.sessions if session.department == department]
 
     def invite_employee(self, payload: EmployeeInvite) -> Employee:
-        employee = Employee(id=f"emp-{uuid.uuid4().hex[:8]}", invitedAt=self._now(), **payload.model_dump())
+        invite_token = secrets.token_urlsafe(18)
+        temporary_password = f"CL-{secrets.token_hex(3).upper()}"
+        invite_link = f"{os.getenv('COMPLYLENS_APP_URL', 'http://127.0.0.1:5173')}/signup?invite={invite_token}"
+        email_status = self._send_invite_email(payload, invite_link, temporary_password) if payload.sendEmail else "dev_logged"
+        employee = Employee(
+            id=f"emp-{uuid.uuid4().hex[:8]}",
+            invitedAt=self._now(),
+            inviteLink=invite_link,
+            temporaryPassword=temporary_password,
+            emailStatus=email_status,
+            **payload.model_dump(),
+        )
         self.employees = [employee, *self.employees]
         self.storage.save_employees(self.employees)
         self.add_audit_event(
             title=f"Employee invited: {employee.email}",
-            detail=f"{employee.role} access assigned to {employee.department}.",
+            detail=f"{employee.role} access assigned to {employee.department}. Email status: {employee.emailStatus}.",
             owner="Admin",
             event_type="user",
             department=employee.department,
         )
         return employee
+
+    def _send_invite_email(self, payload: EmployeeInvite, invite_link: str, temporary_password: str) -> str:
+        host = os.getenv("SMTP_HOST")
+        if not host:
+            return "dev_logged"
+        message = EmailMessage()
+        message["Subject"] = "Your ComplyLens workspace invite"
+        message["From"] = os.getenv("SMTP_FROM", "no-reply@complylens.local")
+        message["To"] = payload.email
+        message.set_content(
+            "\n".join(
+                [
+                    f"Hi {payload.name},",
+                    "",
+                    "You have been invited to ComplyLens.",
+                    f"Invite link: {invite_link}",
+                    f"Temporary password: {temporary_password}",
+                    "",
+                    "Change this password after your first login.",
+                ]
+            )
+        )
+        try:
+            port = int(os.getenv("SMTP_PORT", "587"))
+            username = os.getenv("SMTP_USER")
+            password = os.getenv("SMTP_PASSWORD")
+            with smtplib.SMTP(host, port, timeout=10) as smtp:
+                smtp.starttls()
+                if username and password:
+                    smtp.login(username, password)
+                smtp.send_message(message)
+            return "sent"
+        except Exception:
+            return "failed"
 
     def list_employees(self) -> list[Employee]:
         if self.employees:
@@ -115,6 +181,33 @@ class ComplianceService:
 
     def list_policy_versions(self) -> list[PolicyReference]:
         return self.policy_store.references
+
+    def compare_policy_versions(self, policy: str) -> PolicyComparison:
+        versions = sorted(
+            {reference.version for reference in self.policy_store.references if reference.policy == policy},
+            reverse=True,
+        )
+        if not versions:
+            raise ValueError("Policy not found")
+        latest_version = versions[0]
+        previous_version = versions[1] if len(versions) > 1 else None
+        latest_text = " ".join(
+            reference.text for reference in self.policy_store.references if reference.policy == policy and reference.version == latest_version
+        )
+        previous_text = " ".join(
+            reference.text for reference in self.policy_store.references if reference.policy == policy and reference.version == previous_version
+        ) if previous_version else None
+        latest_terms = set(self._meaningful_terms(latest_text))
+        previous_terms = set(self._meaningful_terms(previous_text or ""))
+        return PolicyComparison(
+            policy=policy,
+            latestVersion=latest_version,
+            previousVersion=previous_version,
+            addedTerms=sorted(latest_terms - previous_terms)[:12],
+            removedTerms=sorted(previous_terms - latest_terms)[:12],
+            latestText=latest_text[:1800],
+            previousText=previous_text[:1800] if previous_text else None,
+        )
 
     def toggle_policy(self, reference_id: str, enabled: bool) -> PolicyReference:
         references = self.policy_store.references
@@ -164,3 +257,64 @@ class ComplianceService:
                 self.storage.save_audit_events(self.audit_events)
                 return updated
         raise ValueError("Audit event not found")
+
+    def report_summary(self, role: str = "admin", department: str | None = None) -> ReportSummary:
+        sessions = self.list_sessions(department if role == "employee" else department)
+        events = self.list_audit_events(department if department else None)
+        if role == "employee":
+            events = [event for event in events if event.eventType in {"scan", "rewrite"}]
+        total_checks = len(sessions)
+        risk_prevented = sum(session.flaggedSections for session in sessions)
+        clean_sessions = len([session for session in sessions if session.flaggedSections == 0])
+        avg_score = round(sum(session.score for session in sessions) / total_checks) if total_checks else 100
+        clean_rate = round((clean_sessions / total_checks) * 100) if total_checks else 100
+        if role == "admin":
+            metrics = [
+                ReportMetric(label="Org checks", value=total_checks, delta="saved backend sessions", tone="success"),
+                ReportMetric(label="Risk prevented", value=risk_prevented, delta="flagged sections found", tone="warning"),
+                ReportMetric(label="Average score", value=avg_score, suffix="%", delta="across analyzed files", tone="success" if avg_score >= 80 else "warning"),
+                ReportMetric(label="Open audit events", value=len([event for event in events if event.status == "open"]), delta="need admin review", tone="danger"),
+            ]
+        else:
+            metrics = [
+                ReportMetric(label="My checks", value=total_checks, delta="documents analyzed", tone="success"),
+                ReportMetric(label="Risk avoided", value=risk_prevented, delta="issues caught before sending", tone="warning"),
+                ReportMetric(label="Clean drafts", value=clean_rate, suffix="%", delta="no risky sections", tone="success"),
+                ReportMetric(label="Average score", value=avg_score, suffix="%", delta="personal quality", tone="success" if avg_score >= 80 else "warning"),
+            ]
+        department_counts: defaultdict[str, int] = defaultdict(int)
+        policy_counts: Counter[str] = Counter()
+        trend_counts: defaultdict[str, int] = defaultdict(int)
+        for session in sessions:
+            department_counts[session.department] += session.flaggedSections or 1
+            trend_counts[session.createdAt[:10]] += session.flaggedSections
+            for violation in session.report.violations:
+                policy_counts[violation.policyName] += 1
+        max_department = max(department_counts.values() or [1])
+        max_policy = max(policy_counts.values() or [1])
+        department_risk = [
+            ReportBar(label=label, value=round((value / max_department) * 100), tone="danger" if value >= max_department else "warning")
+            for label, value in sorted(department_counts.items(), key=lambda item: item[1], reverse=True)[:6]
+        ]
+        policy_violations = [
+            ReportBar(label=label, value=round((value / max_policy) * 100), tone="warning")
+            for label, value in policy_counts.most_common(6)
+        ]
+        trend = [trend_counts[key] for key in sorted(trend_counts.keys())[-8:]]
+        if not trend:
+            trend = [0]
+        return ReportSummary(
+            role="admin" if role == "admin" else "employee",
+            generatedAt=self._now(),
+            metrics=metrics,
+            departmentRisk=department_risk,
+            policyViolations=policy_violations,
+            trend=trend,
+            recentSessions=sessions[:8],
+            auditEvents=events[:8],
+        )
+
+    def _meaningful_terms(self, text: str) -> list[str]:
+        stop_words = {"the", "and", "for", "with", "must", "shall", "that", "this", "from", "into", "only", "before", "after"}
+        words = [word.lower().strip(".,:;()[]") for word in text.split()]
+        return [word for word in words if len(word) > 4 and word not in stop_words]

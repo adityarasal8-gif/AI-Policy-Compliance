@@ -1,4 +1,13 @@
-import { API_BASE_URL, type AuditEvent, type ComplianceReport, type Employee, type PolicyReference, type SavedSession } from "@complylens/shared";
+import {
+  API_BASE_URL,
+  type AuditEvent,
+  type ComplianceReport,
+  type Employee,
+  type PolicyComparison,
+  type PolicyReference,
+  type ReportSummary,
+  type SavedSession
+} from "@complylens/shared";
 
 export async function analyzeDocument(input: {
   text: string;
@@ -62,6 +71,7 @@ export async function inviteEmployee(payload: {
   name: string;
   department: string;
   role: "employee" | "admin";
+  sendEmail?: boolean;
 }) {
   const response = await fetch(`${API_BASE_URL}/employees`, {
     method: "POST",
@@ -100,6 +110,18 @@ export async function listPolicyVersions() {
   const response = await fetch(`${API_BASE_URL}/policies`);
   if (!response.ok) throw new Error(await response.text());
   return (await response.json()) as PolicyReference[];
+}
+
+export async function comparePolicyVersions(policy: string) {
+  const response = await fetch(`${API_BASE_URL}/policies/compare?policy=${encodeURIComponent(policy)}`);
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as PolicyComparison;
+}
+
+export async function getReportSummary(role: "admin" | "employee", department = "All") {
+  const response = await fetch(`${API_BASE_URL}/reports/summary?role=${encodeURIComponent(role)}&department=${encodeURIComponent(department)}`);
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as ReportSummary;
 }
 
 export async function togglePolicyReference(referenceId: string, enabled: boolean) {

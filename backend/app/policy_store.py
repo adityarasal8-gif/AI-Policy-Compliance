@@ -103,7 +103,7 @@ class PolicyStore:
     def load_references(self, references: list[PolicyReference]) -> None:
         self._chunks = [PolicyChunk(reference=reference, vector=vectorize(reference.text)) for reference in references]
 
-    def add_policy_text(self, text: str, policy: str, section: str = "Uploaded policy", owner: str = "Compliance") -> list[PolicyReference]:
+    def add_policy_text(self, text: str, policy: str, section: str = "Uploaded policy", owner: str = "Compliance", version: int = 1) -> list[PolicyReference]:
         references: list[PolicyReference] = []
         for chunk in chunk_text(text):
             reference = PolicyReference(
@@ -112,6 +112,7 @@ class PolicyStore:
                 section=section,
                 owner=owner,
                 text=chunk,
+                version=version,
             )
             self._chunks.append(PolicyChunk(reference=reference, vector=vectorize(chunk)))
             references.append(reference)

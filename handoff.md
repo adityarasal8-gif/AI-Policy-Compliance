@@ -355,8 +355,60 @@
 - Connect Inbox and Audit Trail to backend events instead of seeded frontend data.
 - Further split extension content script into separate files if the extension grows; current file is modularized internally but still one Vite entry file.
 - Add true multiple-compose Gmail support; current content script still targets the first matching compose body in Gmail.
-- Replace local JSON backend persistence with a real DB/vector store when moving beyond demo deployment.
 - Continue remaining backend/RAG/evaluation/testing work when the user wants to move beyond frontend polish.
+
+## Session Update - 2026-05-15
+### Objective
+- Connect reports to backend saved sessions, add aggregation endpoints, add real chart data, improve employee invites, add policy version comparison, and replace JSON state with a real local database.
+
+### Completed
+- Replaced JSON runtime persistence with SQLite-backed storage at `backend/data/complylens.db`, including legacy migration from `backend/data/state.json`.
+- Added backend report aggregation endpoint `GET /reports/summary` using saved analysis sessions, audit events, department risk, policy violation counts, and trend data.
+- Connected admin and employee Reports UI to backend aggregates instead of static seeded-only metrics.
+- Added employee invite links, temporary passwords, email status, and SMTP-backed email invite sending with dev fallback when SMTP env vars are not configured.
+- Added policy upload version numbering and `GET /policies/compare` for latest-vs-previous policy term comparison.
+- Added admin UI display for generated invite credentials and policy comparison output.
+- Improved PDF export generation so exported reports include findings, citations, explanations, and suggested rewrites.
+
+### Files Modified
+- `backend/app/storage.py`
+- `backend/app/models.py`
+- `backend/app/services.py`
+- `backend/app/main.py`
+- `backend/app/policy_store.py`
+- `packages/shared/src/types.ts`
+- `apps/web/src/api/complianceApi.ts`
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/pages/SettingsPage.tsx`
+- `apps/web/src/pages/PoliciesPage.tsx`
+- `apps/web/src/pages/DashboardPage.tsx`
+- `apps/web/src/styles/pages.css`
+- `apps/web/src/styles/workspace.css`
+- `handoff.md`
+
+### Architecture Decisions
+- SQLite is used as the local durable database for demo/runtime state while keeping the existing service API shape intact.
+- Email sending uses SMTP env vars (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`) and stores `dev_logged` when SMTP is not configured.
+- Reports remain role-specific: admins see organization governance data, employees see personal analysis history and quality signals.
+- Policy comparison is text/term based for now; semantic diffing can be added later with embeddings.
+
+### Dependencies Added
+- None. SQLite, SMTP, and email composition use Python standard library modules.
+
+### Issues Found
+- Previous Reports UI had duplicate React keys for repeated document names; fixed by keying session rows by backend IDs.
+- Existing policy toggles had incremented some seed policy versions without preserving earlier version text; new uploads preserve separate version rows.
+
+### Pending Work
+- Add automated backend tests for SQLite migration, report aggregation, invites, and policy comparison.
+- Add authenticated invite redemption flow instead of demo localStorage role switching.
+- Add production email provider config and secure password reset/change flow.
+- Add semantic policy diffing and reviewer approval workflow for policy version changes.
+
+### Notes For Next Agent
+- Dev server is running at `http://127.0.0.1:5173/`; backend is running at `http://127.0.0.1:8000/`.
+- Verification passed this session: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend smoke tests for health/reports/invites/policy compare, and Browser checks for Reports, Settings, and Policies alignment.
+- Do not commit untracked `.DS_Store` or `ai-system/` unless explicitly requested.
 
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.

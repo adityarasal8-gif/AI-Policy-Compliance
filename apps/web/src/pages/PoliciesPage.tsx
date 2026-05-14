@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { Database, FileSearch, GitBranch, ShieldCheck, Upload } from "lucide-react";
-import { samplePolicies, type PolicyReference } from "@complylens/shared";
-import { listPolicyVersions, togglePolicyReference, uploadPolicyDocument } from "../api/complianceApi";
+import { samplePolicies, type PolicyComparison, type PolicyReference } from "@complylens/shared";
+import { comparePolicyVersions, listPolicyVersions, togglePolicyReference, uploadPolicyDocument } from "../api/complianceApi";
 import { NoticeBox } from "../components/common/NoticeBox";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
@@ -14,6 +14,7 @@ export function PoliciesPage() {
   const [uploading, setUploading] = useState(false);
   const [policyRows, setPolicyRows] = useState(samplePolicies);
   const [policyVersions, setPolicyVersions] = useState<PolicyReference[]>([]);
+  const [comparison, setComparison] = useState<PolicyComparison | null>(null);
 
   useEffect(() => {
     void refreshPolicyVersions();
@@ -21,9 +22,21 @@ export function PoliciesPage() {
 
   async function refreshPolicyVersions() {
     try {
-      setPolicyVersions(await listPolicyVersions());
+      const versions = await listPolicyVersions();
+      setPolicyVersions(versions);
+      if (versions[0]) {
+        void loadComparison(versions[0].policy);
+      }
     } catch {
       setPolicyVersions([]);
+    }
+  }
+
+  async function loadComparison(policy: string) {
+    try {
+      setComparison(await comparePolicyVersions(policy));
+    } catch {
+      setComparison(null);
     }
   }
 
@@ -115,6 +128,9 @@ export function PoliciesPage() {
                   <button onClick={() => void togglePolicy(policy)} type="button">
                     {policy.enabled === false ? "Enable" : "Disable"}
                   </button>
+                  <button onClick={() => void loadComparison(policy.policy)} type="button">
+                    Compare
+                  </button>
                 </article>
               ))}
               {policyRows.map((policy) => (
@@ -146,6 +162,20 @@ export function PoliciesPage() {
               <strong>Retrieval health: high</strong>
               <span>Policy chunks are returning cited context for 94% of flagged messages.</span>
             </div>
+            {comparison ? (
+              <div className="policy-compare-card">
+                <strong>{comparison.policy}</strong>
+                <span>Latest v{comparison.latestVersion}{comparison.previousVersion ? ` compared with v${comparison.previousVersion}` : " has no previous upload yet"}</span>
+                <div>
+                  <small>Added terms</small>
+                  <p>{comparison.addedTerms.length ? comparison.addedTerms.join(", ") : "No major new terms"}</p>
+                </div>
+                <div>
+                  <small>Removed terms</small>
+                  <p>{comparison.removedTerms.length ? comparison.removedTerms.join(", ") : "No major removed terms"}</p>
+                </div>
+              </div>
+            ) : null}
           </aside>
         </div>
           </>

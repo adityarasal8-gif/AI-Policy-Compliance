@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("complylens")
 
 app = FastAPI(title="ComplyLens API", version="0.1.0")
-service = ComplianceService(Path(__file__).resolve().parents[1] / "data" / "state.json")
+service = ComplianceService(Path(__file__).resolve().parents[1] / "data" / "complylens.db")
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +64,14 @@ def policies():
     return service.list_policy_versions()
 
 
+@app.get("/policies/compare")
+def compare_policy(policy: str):
+    try:
+        return service.compare_policy_versions(policy)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.patch("/policies/{reference_id}")
 def toggle_policy(reference_id: str, payload: PolicyToggle):
     try:
@@ -98,6 +106,11 @@ def sessions(department: str | None = None):
 @app.get("/audit-events")
 def audit_events(department: str | None = None):
     return service.list_audit_events(department)
+
+
+@app.get("/reports/summary")
+def reports_summary(role: str = "admin", department: str | None = None):
+    return service.report_summary(role=role, department=department)
 
 
 @app.patch("/audit-events/{event_id}/reviewed")
