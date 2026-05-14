@@ -11,10 +11,10 @@ const fallbackSummary: ReportSummary = {
   role: "admin",
   generatedAt: new Date().toISOString(),
   metrics: [
-    { label: "Checks", value: 0, suffix: "", delta: "waiting for saved sessions", tone: "neutral" },
-    { label: "Risk prevented", value: 0, suffix: "", delta: "flagged sections", tone: "warning" },
-    { label: "Average score", value: 100, suffix: "%", delta: "no risky files yet", tone: "success" },
-    { label: "Open audit events", value: 0, suffix: "", delta: "needs review", tone: "neutral" }
+    { label: "Messages checked", value: 0, suffix: "", delta: "waiting for saved scans", tone: "neutral" },
+    { label: "Issues caught", value: 0, suffix: "", delta: "before sending", tone: "warning" },
+    { label: "Compliance quality", value: 100, suffix: "%", delta: "no risky files yet", tone: "success" },
+    { label: "Review queue", value: 0, suffix: "", delta: "admin decisions open", tone: "neutral" }
   ],
   departmentRisk: [],
   policyViolations: [],
@@ -54,8 +54,8 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
       <section className="ops-dashboard simple-dashboard">
         <div className="workspace-command-bar">
           <div>
-            <h1>{isAdmin ? "Risk Intelligence" : "My Reports"}</h1>
-            <p>{isAdmin ? "Live organization reports from saved sessions, audit events, and policy findings." : "Your saved checks, safe rewrite progress, and documents that need attention."}</p>
+            <h1>{isAdmin ? "Compliance Control Report" : "My Safe-Send Report"}</h1>
+            <p>{isAdmin ? "See where risky communication is coming from, what needs review, and which policies are creating the most work." : "See which drafts are ready, which need a rewrite, and what language to avoid next time."}</p>
           </div>
           <div className="workspace-command-status">
             <span>{isAdmin ? <TrendingDown size={15} /> : <UserCheck size={15} />} {isAdmin ? "Admin report" : "Personal report"}</span>
@@ -85,7 +85,7 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
 
         <div className="intelligence-grid">
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Risk concentration" : "Personal risk"} title={isAdmin ? "Departments with the most findings" : "Recent files checked"} />
+            <PanelTitle label={isAdmin ? "Where to focus" : "My checked work"} title={isAdmin ? "Departments creating review workload" : "Recent drafts and their risk level"} />
             <div className="heatmap-list">
               {(isAdmin ? summary.departmentRisk : summary.recentSessions.map((session) => ({ id: session.id, label: session.documentName, value: Math.max(session.flaggedSections * 25, 8), tone: session.flaggedSections ? "warning" : "success" as const }))).map((item, index) => (
                 <div className={`heatmap-row tone-${item.tone}`} key={"id" in item ? item.id : `${item.label}-${index}`}>
@@ -94,19 +94,22 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
                   <strong>{item.value}%</strong>
                 </div>
               ))}
-              {!summary.departmentRisk.length && isAdmin && <div className="empty-mini">Run analyses to populate department risk.</div>}
+              {!summary.departmentRisk.length && isAdmin && <div className="empty-mini">Run scans to see which department needs policy coaching first.</div>}
             </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label="Timeline" title={isAdmin ? "Risk prevented over time" : "My weekly finding trend"} />
+            <PanelTitle label={isAdmin ? "Business outcome" : "Send readiness"} title={isAdmin ? "Risk caught before delivery" : "Drafts that still need fixes"} />
             <div className="trend-chart">
               {summary.trend.map((point, index) => <i key={`${point}-${index}`} style={{ height: `${Math.max((point / maxTrend) * 100, 8)}%` }} />)}
             </div>
+            <div className="report-value-note">
+              {isAdmin ? "Use this to prove how many risky sections were stopped before employees sent them." : "Each bar is a check where ComplyLens found language you should fix before sending."}
+            </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label="Policies" title={isAdmin ? "Most violated rules" : "Rules I should watch"} />
+            <PanelTitle label="Policy coaching" title={isAdmin ? "Rules causing the most rewrites" : "Rules I keep triggering"} />
             <div className="heatmap-list">
               {summary.policyViolations.map((item, index) => (
                 <div className={`heatmap-row tone-${item.tone}`} key={`${item.label}-${index}`}>
@@ -115,12 +118,12 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
                   <strong>{item.value}%</strong>
                 </div>
               ))}
-              {!summary.policyViolations.length && <div className="empty-mini">No repeated policy risks yet.</div>}
+              {!summary.policyViolations.length && <div className="empty-mini">No repeated policy risks yet. New findings will appear here after scans.</div>}
             </div>
           </section>
 
           <section className="ops-card team-policy-card">
-            <PanelTitle label={isAdmin ? "Audit evidence" : "Session evidence"} title={isAdmin ? "Latest operational events" : "Recent compliance checks"} />
+            <PanelTitle label={isAdmin ? "Evidence trail" : "My evidence"} title={isAdmin ? "Latest scans, invites, and policy actions" : "Recent checks I can export or revisit"} />
             <div className="team-table">
               {(isAdmin ? summary.auditEvents : summary.recentSessions).slice(0, 5).map((item) => (
                 "eventType" in item ? (
@@ -141,12 +144,12 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </section>
 
           <section className="ops-card">
-            <PanelTitle label="Recommended action" title={isAdmin ? "What admins should do next" : "What to do before sending"} />
+            <PanelTitle label="Decision help" title={isAdmin ? "What to fix operationally" : "What to do before sending"} />
             <div className="insight-list">
-              <div><MessageSquareWarning size={16} /> {isAdmin ? "Review open audit events and repeated policy violations weekly." : "Run checks on customer, HR, legal, and vendor drafts before sharing."}</div>
-              <div><ShieldCheck size={16} /> {isAdmin ? "Disable outdated policy chunks and upload the latest policy version." : "Use safe rewrites when sensitive data or guarantee language appears."}</div>
-              <div><FileText size={16} /> {isAdmin ? "Export important analyses as evidence for compliance review." : "Keep report exports for manager-reviewed communications."}</div>
-              <div><CheckCircle2 size={16} /> {isAdmin ? "Use employee invite links to onboard teams into the same workflow." : "Clean drafts do not need extra admin review."}</div>
+              <div><MessageSquareWarning size={16} /> {isAdmin ? "Coach the department with the highest review workload first." : "Rewrite any sentence that includes promises, private data, or HR-sensitive details."}</div>
+              <div><ShieldCheck size={16} /> {isAdmin ? "Update the policies that repeatedly trigger findings and compare versions before enabling them." : "Use the suggested rewrite, then run analysis again until the draft is ready."}</div>
+              <div><FileText size={16} /> {isAdmin ? "Export high-risk scans as review evidence for legal or compliance signoff." : "Export the report when a manager needs proof that the draft was checked."}</div>
+              <div><CheckCircle2 size={16} /> {isAdmin ? "Invite employees into the workflow instead of handling reviews manually." : "Clean drafts can be sent without opening an admin review ticket."}</div>
             </div>
           </section>
         </div>

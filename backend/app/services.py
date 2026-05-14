@@ -270,17 +270,17 @@ class ComplianceService:
         clean_rate = round((clean_sessions / total_checks) * 100) if total_checks else 100
         if role == "admin":
             metrics = [
-                ReportMetric(label="Org checks", value=total_checks, delta="saved backend sessions", tone="success"),
-                ReportMetric(label="Risk prevented", value=risk_prevented, delta="flagged sections found", tone="warning"),
-                ReportMetric(label="Average score", value=avg_score, suffix="%", delta="across analyzed files", tone="success" if avg_score >= 80 else "warning"),
-                ReportMetric(label="Open audit events", value=len([event for event in events if event.status == "open"]), delta="need admin review", tone="danger"),
+                ReportMetric(label="Messages checked", value=total_checks, delta="saved from real scans", tone="success"),
+                ReportMetric(label="Issues caught", value=risk_prevented, delta="before risky content was sent", tone="warning"),
+                ReportMetric(label="Compliance quality", value=avg_score, suffix="%", delta="average document safety score", tone="success" if avg_score >= 80 else "warning"),
+                ReportMetric(label="Review queue", value=len([event for event in events if event.status == "open"]), delta="admin decisions still open", tone="danger"),
             ]
         else:
             metrics = [
-                ReportMetric(label="My checks", value=total_checks, delta="documents analyzed", tone="success"),
-                ReportMetric(label="Risk avoided", value=risk_prevented, delta="issues caught before sending", tone="warning"),
-                ReportMetric(label="Clean drafts", value=clean_rate, suffix="%", delta="no risky sections", tone="success"),
-                ReportMetric(label="Average score", value=avg_score, suffix="%", delta="personal quality", tone="success" if avg_score >= 80 else "warning"),
+                ReportMetric(label="My checked drafts", value=total_checks, delta="files and messages reviewed", tone="success"),
+                ReportMetric(label="Fixes needed", value=risk_prevented, delta="items to rewrite before sending", tone="warning"),
+                ReportMetric(label="Ready to send", value=clean_rate, suffix="%", delta="drafts with no risky sections", tone="success"),
+                ReportMetric(label="Writing safety", value=avg_score, suffix="%", delta="average safe-language score", tone="success" if avg_score >= 80 else "warning"),
             ]
         department_counts: defaultdict[str, int] = defaultdict(int)
         policy_counts: Counter[str] = Counter()

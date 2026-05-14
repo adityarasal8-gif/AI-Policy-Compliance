@@ -410,6 +410,40 @@
 - Verification passed this session: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend smoke tests for health/reports/invites/policy compare, and Browser checks for Reports, Settings, and Policies alignment.
 - Do not commit untracked `.DS_Store` or `ai-system/` unless explicitly requested.
 
+## Session Update - 2026-05-15
+### Objective
+- Tighten employee upload copy and make Reports feel more valuable for employees and admins.
+
+### Completed
+- Changed employee workspace upload helper copy from a long format list to `PDF, DOCX, DOC, and more`.
+- Reframed Reports from generic trend wording into operational report language:
+  - Employee: `My Safe-Send Report`, readiness, fixes needed, writing safety, drafts that need action.
+  - Admin: control/report wording driven by review workload, policy coaching, evidence trail, and business outcome.
+- Updated backend report metric labels to return clearer value-focused names.
+- Added explanatory report value note below the chart so the bars explain business/user outcome instead of appearing decorative.
+
+### Files Modified
+- `apps/web/src/pages/DashboardPage.tsx`
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/styles/workspace.css`
+- `backend/app/services.py`
+- `handoff.md`
+
+### Architecture Decisions
+- Kept the existing report aggregation endpoint shape and improved the product semantics without changing client/server contracts.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- The previous `My weekly finding trend` copy did not communicate user value and made the chart feel decorative.
+
+### Pending Work
+- Reports still need deeper business modules: risk value estimate, rewrite acceptance, reviewer SLA, department coaching queue, and policy drift impact.
+
+### Notes For Next Agent
+- Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend report smoke tests, and Browser checks for `/dashboard` upload copy and `/reports` report copy.
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.
