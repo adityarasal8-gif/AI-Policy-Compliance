@@ -275,6 +275,46 @@
   - Extension popup now supports configurable backend URL, connection test, and stored API base URL.
   - Gmail content script now uses the stored backend URL instead of a hardcoded API constant.
   - Verification passed: `npm run typecheck`, `npm run build:web`, `npm run build:extension`, `python3 -m py_compile backend/app/*.py`, backend smoke tests, and browser flow checks for guards, invites, policies, audit, sessions, and PDF export button.
+
+## Session Update - 2026-05-15
+
+### Objective
+- Read the `ai-system` files, remove visible `EML/HTM/TXT` upload wording, and add separate Reports experiences for admin and employee roles.
+
+### Completed
+- Read `ai-system/handoff.md` and `ai-system/universal-ai-flow.md`.
+- Added `Reports` to employee and admin sidebars.
+- Added `/reports` route and redirected legacy `/analytics` to `/reports`.
+- Rebuilt Reports page as role-aware:
+  - Employee: personal checks, safe rewrites, risk avoided, clean drafts, recent document history, helpful habits.
+  - Admin: organization risk intelligence, department spikes, weekly risk prevented, most violated rules, reviewer agreement, unsafe phrase patterns.
+- Removed visible `EML`, `HTM`, and `TXT` wording from workspace drag/drop copy.
+- Removed visible `EML`, `HTML`, and `TXT` wording from policy upload helper copy while keeping backend support intact.
+
+### Files Modified
+- `apps/web/src/App.tsx`
+- `apps/web/src/layouts/WorkspaceShell.tsx`
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/pages/DashboardPage.tsx`
+- `apps/web/src/pages/PoliciesPage.tsx`
+- `handoff.md`
+
+### Architecture Decisions
+- Kept parser support for `.eml`, `.htm/.html`, and `.txt`; only changed user-facing wording as requested.
+- Reused existing `AnalyticsPage` route concept for the new role-aware Reports page instead of creating duplicate report pages.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- Reports had been hidden by redirecting `/analytics` to `/settings`; now restored as `/reports`.
+
+### Pending Work
+- Reports still use seeded/demo metrics. Next step should connect reports to saved sessions and audit-event aggregates from the backend.
+
+### Notes For Next Agent
+- `ai-system` requires handoff updates after implementation.
+- Admin and employee report UX must remain separate because their use cases are different: personal improvement vs organization risk governance.
   - Browser checked `/dashboard` mobile after reordering the workspace stack.
   - Browser checked `/integrations` desktop after signal-card fixes.
 - Pending cleanup verification:

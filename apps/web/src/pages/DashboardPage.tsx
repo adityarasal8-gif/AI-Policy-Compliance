@@ -344,7 +344,7 @@ export function DashboardPage() {
                   <UploadCloud size={34} />
                 </div>
                 <strong>{selectedFile ? selectedFile.name : "Drop a document here"}</strong>
-                <span>PDF, DOCX, DOC, EML, HTML, RTF, TXT, or pasted text</span>
+                <span>PDF, DOCX, DOC, Markdown, rich text, or pasted content</span>
                 <small>{dragActive ? "Release to attach this file" : selectedFile ? "File ready for analysis" : "Click the box or drag a file onto it"}</small>
               </div>
 

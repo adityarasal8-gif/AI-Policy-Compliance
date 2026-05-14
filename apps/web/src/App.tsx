@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthPage } from "./pages/AuthPage";
 import { ActivityPage } from "./pages/ActivityPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LandingPage } from "./pages/LandingPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
@@ -26,7 +27,8 @@ export function App() {
       <Route path="/signup" element={<AuthPage mode="signup" />} />
       <Route path="/dashboard" element={<RequireRole><DashboardPage /></RequireRole>} />
       <Route path="/inbox" element={<Navigate replace to="/dashboard" />} />
-      <Route path="/analytics" element={<Navigate replace to="/settings" />} />
+      <Route path="/analytics" element={<Navigate replace to="/reports" />} />
+      <Route path="/reports" element={<RequireRole><AnalyticsPage /></RequireRole>} />
       <Route path="/activity" element={<Navigate replace to="/audit" />} />
       <Route path="/audit" element={<RequireRole><ActivityPage /></RequireRole>} />
       <Route path="/policies" element={<RequireRole adminOnly><PoliciesPage /></RequireRole>} />

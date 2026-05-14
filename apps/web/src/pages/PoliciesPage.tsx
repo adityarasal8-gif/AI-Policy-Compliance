@@ -94,7 +94,7 @@ export function PoliciesPage() {
               <Upload size={22} />
               <span>
                 <strong>{uploading ? "Uploading policy..." : "Upload policy document"}</strong>
-                <small>PDF, DOC, DOCX, EML, HTML, Markdown, RTF, and TXT are parsed by the backend.</small>
+                <small>PDF, DOC, DOCX, Markdown, rich text, and email exports are parsed by the backend.</small>
               </span>
               <input accept=".pdf,.doc,.docx,.eml,.html,.htm,.md,.rtf,.txt" disabled={uploading} onChange={uploadPolicy} type="file" />
             </label>
