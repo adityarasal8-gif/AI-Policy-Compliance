@@ -133,7 +133,7 @@ export function PoliciesPage() {
                   </button>
                 </article>
               ))}
-              {policyRows.map((policy) => (
+              {!policyVersions.length && policyRows.map((policy) => (
                 <article className="policy-row wide" key={policy.id}>
                   <span>{policy.owner}</span>
                   <div>

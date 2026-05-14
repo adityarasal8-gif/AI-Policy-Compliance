@@ -489,6 +489,41 @@
 ### Notes For Next Agent
 - Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend `/reports/summary` smoke tests, and Browser checks for employee/admin `/reports`.
 
+## Session Update - 2026-05-15
+### Objective
+- Recheck all website pages for alignment, spacing, overflow, and obvious UI issues.
+
+### Completed
+- Ran a route/viewport audit across homepage, auth, employee workspace/reports/audit/settings, and admin dashboard/reports/audit/policies/settings at desktop and mobile widths.
+- Fixed mobile workspace sidebar spacing by switching sidebar rows to compact auto sizing, wrapping nav links cleanly, and reducing mobile nav/button height.
+- Fixed mobile page overflow/alignment by adding `policy-console` to responsive single-column layouts and constraining nested report/policy/grid children.
+- Tightened homepage decorative hero elements on mobile so orbit/glow visuals no longer bleed outside the viewport.
+- Removed duplicate seeded policy rows when live backend policy versions are available, reducing Policies page crowding.
+
+### Files Modified
+- `apps/web/src/styles/responsive.css`
+- `apps/web/src/pages/PoliciesPage.tsx`
+- `handoff.md`
+
+### Architecture Decisions
+- Kept the left-sidebar workspace model, but made mobile sidebar behave like a compact wrapped command header instead of a desktop-height rail.
+- Policy page now treats backend policies as the source of truth and only shows seeded fallback rows if the backend policy list is empty.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- Mobile workspace sidebar used desktop grid row sizing, creating excessive empty space before page content.
+- Admin Policies rendered both backend policy versions and seeded sample policies, making the page look duplicated/crowded.
+- Mobile policy console was not included in the responsive one-column grid list.
+
+### Pending Work
+- Reports are still long on mobile because they now contain much richer data; consider adding tabs/accordions for mobile report sections.
+- Add screenshot regression tests so overflow and spacing issues are caught automatically.
+
+### Notes For Next Agent
+- Verification passed: `npm run typecheck`, `npm run build:web`, and Browser route audit returned no horizontal overflow/offscreen elements for tested desktop/mobile routes.
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.

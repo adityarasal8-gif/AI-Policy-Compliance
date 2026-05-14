@@ -42,6 +42,7 @@
   .extension-install-steps,
   .thread-summary-grid,
   .policy-health-grid,
+  .policy-console,
   .settings-grid--wide,
   .employee-settings-top,
   .employee-settings-cards,
@@ -83,20 +84,37 @@
   }
   .workspace-sidebar {
     position: static;
+    grid-template-rows: auto auto auto;
     height: auto;
-    padding: 12px;
+    gap: 10px;
+    padding: 10px 12px;
   }
   .workspace-sidebar-nav {
     display: flex;
     gap: 6px;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow: visible;
     padding-bottom: 2px;
   }
   .workspace-sidebar-nav a {
+    flex: 1 1 112px;
+    justify-content: center;
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 9px;
+  }
+  .workspace-sidebar-nav a svg {
     flex: 0 0 auto;
   }
   .workspace-org-card {
     display: none;
+  }
+  .workspace-sidebar-footer {
+    gap: 6px;
+  }
+  .workspace-quick-actions a,
+  .workspace-quick-actions button {
+    min-height: 32px;
   }
   .site-nav,
   .workspace-nav {
@@ -121,6 +139,14 @@
   }
   .hero-section {
     min-height: calc(100svh - 118px);
+  }
+  .hero-orbit {
+    width: min(320px, 88vw);
+    height: min(320px, 88vw);
+    inset: 12% 0 auto auto;
+  }
+  .hero-grid-glow {
+    inset: 10% 0 4%;
   }
   .home-section {
     min-height: auto;
@@ -176,6 +202,13 @@
   .page-panel,
   .auth-layout {
     width: calc(100% - 24px);
+  }
+  .policy-console > *,
+  .settings-grid > *,
+  .report-hero-grid > *,
+  .report-ops-grid > *,
+  .report-evidence-grid > * {
+    min-width: 0;
   }
   .hero-visual {
     min-height: 330px;
