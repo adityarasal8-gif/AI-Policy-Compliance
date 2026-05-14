@@ -21,7 +21,9 @@
   }
   .report-hero-grid,
   .report-evidence-grid,
-  .report-ops-grid {
+  .report-ops-grid,
+  .report-control-grid,
+  .report-decision-grid {
     grid-template-columns: 1fr;
   }
   .ops-grid { grid-template-columns: 1fr; }
@@ -53,6 +55,10 @@
     grid-template-columns: 1fr;
   }
   .report-insight-grid {
+    grid-template-columns: 1fr;
+  }
+  .report-evidence-strip,
+  .report-control-primary .report-status-list {
     grid-template-columns: 1fr;
   }
   .codex-chat-head,
@@ -115,6 +121,13 @@
   .workspace-quick-actions a,
   .workspace-quick-actions button {
     min-height: 32px;
+  }
+  .report-decision-banner {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .report-decision-banner > small {
+    text-align: left;
   }
   .site-nav,
   .workspace-nav {

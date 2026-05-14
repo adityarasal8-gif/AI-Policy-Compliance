@@ -524,6 +524,53 @@
 ### Notes For Next Agent
 - Verification passed: `npm run typecheck`, `npm run build:web`, and Browser route audit returned no horizontal overflow/offscreen elements for tested desktop/mobile routes.
 
+## Session Update - 2026-05-15
+### Objective
+- Follow `ai-system` guidance and move Reports further away from dashboard theater into decision intelligence.
+
+### Completed
+- Read all three `ai-system` text files before implementation:
+  - `ai-system/handoff.md`
+  - `ai-system/universal-ai-flow.md`
+  - `ai-system/project_context.md`
+- Treated `ai-system/project_context.md` as behavior guidance only because its EV charging product details are stale for this ComplyLens repository.
+- Rebuilt Reports page structure around:
+  - Executive recommendation / before-you-send banner
+  - Supporting evidence strip
+  - Organization risk exposure / communication readiness queue
+  - Executive recommendation engine / AI writing coaching
+  - Policy failure intelligence / repeated risk patterns
+  - Teams needing coaching / saved-by-AI
+  - Reviewer operations / policy understanding
+  - Audit readiness / recent checked drafts
+  - Control timeline / improvement timeline
+- Removed the visual priority of generic metric cards and made them supporting evidence under the top decision banner.
+
+### Files Modified
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/styles/workspace.css`
+- `apps/web/src/styles/responsive.css`
+- `handoff.md`
+
+### Architecture Decisions
+- Kept the existing `/reports/summary` backend contract and reused existing report summary fields to avoid new API sprawl.
+- Reports remain one route with role-specific semantics instead of splitting into separate pages.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- `ai-system/project_context.md` contains stale EV charging context and should be updated or archived later to avoid future confusion.
+- Reports were still organized around visible dashboard blocks instead of next operational decisions.
+
+### Pending Work
+- Add true report export actions from the Reports page.
+- Add backend rewrite acceptance events and extension install telemetry so report signals become fully real instead of partially inferred.
+- Replace stale `ai-system/project_context.md` with ComplyLens-specific project context when approved.
+
+### Notes For Next Agent
+- Verification passed: `npm run typecheck`, `npm run build:web`, Browser checks for admin/employee Reports at desktop/mobile, and full route overflow audit across desktop/mobile.
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.

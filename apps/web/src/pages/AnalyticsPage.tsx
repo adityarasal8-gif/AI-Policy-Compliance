@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, CheckCircle2, ClipboardCheck, FileText, MessageSquareWarning, RefreshCw, ShieldCheck, Target, TrendingDown, UserCheck } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardCheck, MessageSquareWarning, RefreshCw, TrendingDown, UserCheck } from "lucide-react";
 import type { ReportSummary } from "@complylens/shared";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { getReportSummary } from "../api/complianceApi";
@@ -51,6 +51,28 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
   }, [department, role]);
 
   const maxTrend = useMemo(() => Math.max(...summary.trend, 1), [summary.trend]);
+  const metricByLabel = (label: string) => summary.metrics.find((metric) => metric.label === label);
+  const insightByTitle = (title: string) => summary.executiveInsights.find((insight) => insight.title === title);
+  const primaryAction = summary.actionPlan[0];
+  const riskValue = metricByLabel("Risk value protected");
+  const readiness = metricByLabel("Ready to send");
+  const rewriteWork = metricByLabel("Fixes needed");
+  const safety = metricByLabel("Writing safety");
+  const topDepartment = insightByTitle("Top risky department");
+  const policyDrift = insightByTitle("Policy drift");
+  const reviewerSla = insightByTitle("Reviewer SLA");
+  const repeatPattern = insightByTitle("Repeated risky phrase");
+  const improvement = insightByTitle("Plain-language improvement");
+  const savedByAi = insightByTitle("Financial risk prevented") ?? insightByTitle("Ready to send");
+  const statusRows = isAdmin
+    ? summary.departmentRisk.map((item) => ({ id: item.label, label: item.label, value: item.value, tone: item.tone, status: item.tone === "danger" ? "Coaching required" : "Monitor" }))
+    : summary.recentSessions.map((session) => ({
+        id: session.id,
+        label: session.documentName,
+        value: Math.max(session.flaggedSections * 25, 8),
+        tone: session.status === "blocked" ? "danger" as const : session.flaggedSections ? "warning" as const : "success" as const,
+        status: session.status === "blocked" ? "Manager review" : session.flaggedSections ? "Needs rewrite" : "Clean"
+      }));
 
   return (
     <WorkspaceShell role={role}>
@@ -76,33 +98,46 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </div>
         )}
 
-        <div className="metric-grid report-metric-grid">
+        <section className={`report-decision-banner ${isAdmin ? "admin" : "employee"}`}>
+          <div>
+            <span>{isAdmin ? "Executive recommendation" : "Before you send"}</span>
+            <h2>{isAdmin ? (primaryAction?.label ?? "Run more scans to generate recommendations") : `${readiness?.value ?? 0}${readiness?.suffix ?? "%"} ready-to-send rate`}</h2>
+            <p>{isAdmin ? (primaryAction?.detail ?? "ComplyLens will recommend coaching, policy updates, and review actions once more scans are saved.") : `${rewriteWork?.value ?? 0} rewrite items need attention. ${safety?.value ?? 0}% average writing safety across recent drafts.`}</p>
+          </div>
+          <strong>{isAdmin ? (riskValue ? `$${riskValue.value.toLocaleString()}` : "$0") : `${summary.evidenceExports.filter((item) => item.value === "Clean").length}/${summary.evidenceExports.length || 1}`}</strong>
+          <small>{isAdmin ? "estimated exposure avoided" : "recent drafts clean"}</small>
+        </section>
+
+        <div className="report-evidence-strip">
           {summary.metrics.map((metric) => (
-            <article className={`metric-card tone-${metric.tone}`} key={metric.label}>
+            <article className={`report-proof-pill tone-${metric.tone}`} key={metric.label}>
               <span>{metric.label}</span>
-              <strong>{metric.suffix === "$" ? "$" : ""}{metric.value.toLocaleString()}<small>{metric.suffix === "$" ? "" : metric.suffix}</small></strong>
-              <em>{metric.delta}</em>
+              <strong>{metric.suffix === "$" ? "$" : ""}{metric.value.toLocaleString()}{metric.suffix === "$" ? "" : metric.suffix}</strong>
+              <small>{metric.delta}</small>
             </article>
           ))}
         </div>
 
-        <div className="report-hero-grid">
-          <section className="ops-card report-command-card">
-            <PanelTitle label={isAdmin ? "Executive signal" : "Today’s send decision"} title={isAdmin ? "What changed the business outcome" : "What you should do next"} />
-            <div className="report-insight-grid">
-              {summary.executiveInsights.slice(0, isAdmin ? 6 : 5).map((insight, index) => (
-                <article className={`report-insight tone-${insight.tone}`} key={`${insight.title}-${index}`}>
-                  <strong>{insight.value}</strong>
-                  <span>{insight.title}</span>
-                  <p>{insight.detail}</p>
+        <div className="report-control-grid">
+          <section className="ops-card report-control-primary">
+            <PanelTitle label={isAdmin ? "Organization risk exposure" : "Communication readiness"} title={isAdmin ? "Where leadership should act first" : "Ready, rewrite, or manager review"} />
+            <div className="report-status-list">
+              {statusRows.map((item, index) => (
+                <article className={`report-status-row tone-${item.tone}`} key={`${item.id}-${index}`}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{item.status}</small>
+                  </div>
+                  <div className="mini-risk-meter"><i style={{ width: `${Math.max(item.value, 4)}%` }} /></div>
+                  <span>{item.value}%</span>
                 </article>
               ))}
-              {!summary.executiveInsights.length && <div className="empty-mini">Run more scans to build an evidence-backed report.</div>}
+              {!statusRows.length && <div className="empty-mini">Run scans to build a decision-ready report.</div>}
             </div>
           </section>
 
           <section className="ops-card report-action-card">
-            <PanelTitle label={isAdmin ? "Action plan" : "Fix list"} title={isAdmin ? "Highest priority admin work" : "Do this before sending"} />
+            <PanelTitle label={isAdmin ? "Executive recommendation engine" : "AI writing coaching"} title={isAdmin ? "Prioritized work queue" : "What to fix next"} />
             <div className="report-action-list">
               {summary.actionPlan.map((item, index) => (
                 <article className={`report-action priority-${item.priority}`} key={`${item.label}-${item.owner}-${index}`}>
@@ -112,56 +147,51 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
                   <p>{item.detail}</p>
                 </article>
               ))}
+              {!summary.actionPlan.length && <div className="empty-mini">No action required yet. Run more checks to create a coaching queue.</div>}
             </div>
           </section>
         </div>
 
-        <div className="report-ops-grid">
+        <div className="report-decision-grid">
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Risk map" : "Draft status"} title={isAdmin ? "Top departments with recommended focus" : "Ready, rewrite, or manager review"} />
-            <div className="report-status-list">
-              {(isAdmin ? summary.departmentRisk : summary.recentSessions.map((session) => ({ id: session.id, label: session.documentName, value: Math.max(session.flaggedSections * 25, 8), tone: session.status === "blocked" ? "danger" as const : session.flaggedSections ? "warning" as const : "success" as const, status: session.status === "blocked" ? "Manager review" : session.flaggedSections ? "Needs rewrite" : "Clean" }))).map((item, index) => (
-                <article className={`report-status-row tone-${item.tone}`} key={"id" in item ? String(item.id) : `${item.label}-${index}`}>
+            <PanelTitle label={isAdmin ? "Policy failure intelligence" : "Repeated risk patterns"} title={isAdmin ? "Policies employees struggle with" : "Patterns detected in your drafts"} />
+            <div className="report-brief-list">
+              {summary.policyViolations.map((item, index) => (
+                <article key={`${item.label}-${index}`}>
+                  <MessageSquareWarning size={16} />
                   <div>
                     <strong>{item.label}</strong>
-                    <small>{"status" in item ? String(item.status) : item.tone === "danger" ? "Immediate coaching" : "Watch list"}</small>
+                    <span>{isAdmin ? "Needs training examples and policy clarification." : "Review this policy before sending similar drafts."}</span>
                   </div>
-                  <div className="mini-risk-meter"><i style={{ width: `${Math.max(item.value, 4)}%` }} /></div>
-                  <span>{item.value}%</span>
+                  <em>{item.value}%</em>
                 </article>
               ))}
-              {!summary.departmentRisk.length && isAdmin && <div className="empty-mini">Run scans to see which department needs policy coaching first.</div>}
+              {!summary.policyViolations.length && <div className="empty-mini">No repeated policy risks yet.</div>}
             </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Policy drift" : "Risky phrase coaching"} title={isAdmin ? "Rules causing rewrites and old-version risk" : "Language to avoid next time"} />
-            <div className="heatmap-list">
-              {summary.policyViolations.map((item, index) => (
-                <div className={`heatmap-row tone-${item.tone}`} key={`${item.label}-${index}`}>
-                  <span>{item.label}</span>
-                  <div><i style={{ width: `${Math.max(item.value, 4)}%` }} /></div>
-                  <strong>{item.value}%</strong>
-                </div>
-              ))}
-              {!summary.policyViolations.length && <div className="empty-mini">No repeated policy risks yet. New findings will appear here after scans.</div>}
+            <PanelTitle label={isAdmin ? "Teams needing coaching" : "Saved by AI"} title={isAdmin ? "Repeat offender signal" : "What ComplyLens prevented"} />
+            <div className="report-single-insight">
+              <strong>{isAdmin ? (topDepartment?.value ?? "No team yet") : (savedByAi?.value ?? "0")}</strong>
+              <span>{isAdmin ? (topDepartment?.title ?? "Team coaching") : (savedByAi?.title ?? "Drafts protected")}</span>
+              <p>{isAdmin ? (topDepartment?.detail ?? "Department coaching recommendations appear after scans.") : (savedByAi?.detail ?? "Run checks to see what risks were prevented.")}</p>
             </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Risk prevented" : "Improvement"} title={isAdmin ? "Blocked risk by scan date" : "Plain-language progress"} />
-            <div className="trend-chart report-outcome-chart">
-              {summary.trend.map((point, index) => <i key={`${point}-${index}`} style={{ height: `${Math.max((point / maxTrend) * 100, 8)}%` }} />)}
-            </div>
-            <div className="report-value-note">
-              {isAdmin ? "This is not traffic. It is risk caught before delivery, useful for judge demos and compliance ROI." : "Use this as a simple progress signal: fewer tall bars means fewer risky phrases in your drafts."}
+            <PanelTitle label={isAdmin ? "Reviewer operations" : "Policy understanding"} title={isAdmin ? "SLA and escalation pressure" : "What needs attention"} />
+            <div className="report-single-insight">
+              <strong>{isAdmin ? (reviewerSla?.value ?? "0 open") : (repeatPattern?.value ?? "No pattern yet")}</strong>
+              <span>{isAdmin ? (reviewerSla?.title ?? "Reviewer SLA") : (repeatPattern?.title ?? "Policy understanding score")}</span>
+              <p>{isAdmin ? (reviewerSla?.detail ?? "Open reviewer actions appear here.") : (repeatPattern?.detail ?? "Repeated risky phrases will appear after more scans.")}</p>
             </div>
           </section>
         </div>
 
         <div className="report-evidence-grid">
           <section className="ops-card team-policy-card">
-            <PanelTitle label={isAdmin ? "Audit-ready exports" : "Proof for managers"} title={isAdmin ? "Evidence packets worth exporting" : "Recent checks with simple badges"} />
+            <PanelTitle label={isAdmin ? "Audit readiness" : "Recent checked drafts"} title={isAdmin ? "Evidence packets worth exporting" : "Simple badges, not analytics noise"} />
             <div className="report-export-list">
               {summary.evidenceExports.map((item, index) => (
                 <article className={`report-export-row tone-${item.tone}`} key={`${item.title}-${index}`}>
@@ -177,12 +207,12 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </section>
 
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Operational evidence" : "Useful next habits"} title={isAdmin ? "Latest scans, invites, and policy actions" : "What to fix next"} />
-            <div className="insight-list">
-              <div><Target size={16} /> {isAdmin ? "Use the action plan as the admin work queue for the next compliance cycle." : "Open the first Needs rewrite draft and apply the safe rewrite before sending."}</div>
-              <div><MessageSquareWarning size={16} /> {isAdmin ? "Treat repeat offender teams as training targets, not just analytics rows." : "Avoid guarantees, private customer data, HR details, and legal claims unless approved."}</div>
-              <div><ShieldCheck size={16} /> {isAdmin ? "Export audit packets before judge demos or legal reviews." : "Clean drafts can be sent without opening a manager review ticket."}</div>
-              <div><FileText size={16} /> {isAdmin ? "Policy drift should trigger a policy upload, compare, and enable/disable decision." : "Export a report only when a manager needs proof."}</div>
+            <PanelTitle label={isAdmin ? "Control timeline" : "Improvement timeline"} title={isAdmin ? "Risk stopped before delivery" : "Plain-language progress"} />
+            <div className="trend-chart report-outcome-chart">
+              {summary.trend.map((point, index) => <i key={`${point}-${index}`} style={{ height: `${Math.max((point / maxTrend) * 100, 8)}%` }} />)}
+            </div>
+            <div className="report-value-note">
+              {isAdmin ? "Use this only as evidence of risk intercepted. Leadership actions above matter more than the chart." : `${improvement?.detail ?? "Fewer tall bars means fewer risky phrases in your drafts."}`}
             </div>
           </section>
         </div>
