@@ -135,6 +135,20 @@ class ReportBar(BaseModel):
     tone: Literal["success", "warning", "danger", "neutral"] = "neutral"
 
 
+class ReportInsight(BaseModel):
+    title: str
+    detail: str
+    value: str
+    tone: Literal["success", "warning", "danger", "neutral"] = "neutral"
+
+
+class ReportAction(BaseModel):
+    label: str
+    owner: str
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    detail: str
+
+
 class ReportSummary(BaseModel):
     role: Literal["admin", "employee"]
     generatedAt: str
@@ -144,6 +158,9 @@ class ReportSummary(BaseModel):
     trend: list[int]
     recentSessions: list[SavedSession]
     auditEvents: list[AuditEvent]
+    executiveInsights: list[ReportInsight] = []
+    actionPlan: list[ReportAction] = []
+    evidenceExports: list[ReportInsight] = []
 
 
 class PolicyComparison(BaseModel):

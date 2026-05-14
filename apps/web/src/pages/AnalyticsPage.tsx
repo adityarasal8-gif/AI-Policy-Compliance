@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, CheckCircle2, FileText, MessageSquareWarning, RefreshCw, ShieldCheck, TrendingDown, UserCheck } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ClipboardCheck, FileText, MessageSquareWarning, RefreshCw, ShieldCheck, Target, TrendingDown, UserCheck } from "lucide-react";
 import type { ReportSummary } from "@complylens/shared";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { getReportSummary } from "../api/complianceApi";
@@ -20,7 +20,10 @@ const fallbackSummary: ReportSummary = {
   policyViolations: [],
   trend: [0],
   recentSessions: [],
-  auditEvents: []
+  auditEvents: [],
+  executiveInsights: [],
+  actionPlan: [],
+  evidenceExports: []
 };
 
 function ReportsView({ role }: { role: "admin" | "employee" }) {
@@ -73,43 +76,66 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </div>
         )}
 
-        <div className="metric-grid">
+        <div className="metric-grid report-metric-grid">
           {summary.metrics.map((metric) => (
             <article className={`metric-card tone-${metric.tone}`} key={metric.label}>
               <span>{metric.label}</span>
-              <strong>{metric.value}<small>{metric.suffix}</small></strong>
+              <strong>{metric.suffix === "$" ? "$" : ""}{metric.value.toLocaleString()}<small>{metric.suffix === "$" ? "" : metric.suffix}</small></strong>
               <em>{metric.delta}</em>
             </article>
           ))}
         </div>
 
-        <div className="intelligence-grid">
+        <div className="report-hero-grid">
+          <section className="ops-card report-command-card">
+            <PanelTitle label={isAdmin ? "Executive signal" : "Today’s send decision"} title={isAdmin ? "What changed the business outcome" : "What you should do next"} />
+            <div className="report-insight-grid">
+              {summary.executiveInsights.slice(0, isAdmin ? 6 : 5).map((insight, index) => (
+                <article className={`report-insight tone-${insight.tone}`} key={`${insight.title}-${index}`}>
+                  <strong>{insight.value}</strong>
+                  <span>{insight.title}</span>
+                  <p>{insight.detail}</p>
+                </article>
+              ))}
+              {!summary.executiveInsights.length && <div className="empty-mini">Run more scans to build an evidence-backed report.</div>}
+            </div>
+          </section>
+
+          <section className="ops-card report-action-card">
+            <PanelTitle label={isAdmin ? "Action plan" : "Fix list"} title={isAdmin ? "Highest priority admin work" : "Do this before sending"} />
+            <div className="report-action-list">
+              {summary.actionPlan.map((item, index) => (
+                <article className={`report-action priority-${item.priority}`} key={`${item.label}-${item.owner}-${index}`}>
+                  <span>{item.priority}</span>
+                  <strong>{item.label}</strong>
+                  <small>{item.owner}</small>
+                  <p>{item.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="report-ops-grid">
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Where to focus" : "My checked work"} title={isAdmin ? "Departments creating review workload" : "Recent drafts and their risk level"} />
-            <div className="heatmap-list">
-              {(isAdmin ? summary.departmentRisk : summary.recentSessions.map((session) => ({ id: session.id, label: session.documentName, value: Math.max(session.flaggedSections * 25, 8), tone: session.flaggedSections ? "warning" : "success" as const }))).map((item, index) => (
-                <div className={`heatmap-row tone-${item.tone}`} key={"id" in item ? item.id : `${item.label}-${index}`}>
-                  <span>{item.label}</span>
-                  <div><i style={{ width: `${Math.max(item.value, 4)}%` }} /></div>
-                  <strong>{item.value}%</strong>
-                </div>
+            <PanelTitle label={isAdmin ? "Risk map" : "Draft status"} title={isAdmin ? "Top departments with recommended focus" : "Ready, rewrite, or manager review"} />
+            <div className="report-status-list">
+              {(isAdmin ? summary.departmentRisk : summary.recentSessions.map((session) => ({ id: session.id, label: session.documentName, value: Math.max(session.flaggedSections * 25, 8), tone: session.status === "blocked" ? "danger" as const : session.flaggedSections ? "warning" as const : "success" as const, status: session.status === "blocked" ? "Manager review" : session.flaggedSections ? "Needs rewrite" : "Clean" }))).map((item, index) => (
+                <article className={`report-status-row tone-${item.tone}`} key={"id" in item ? String(item.id) : `${item.label}-${index}`}>
+                  <div>
+                    <strong>{item.label}</strong>
+                    <small>{"status" in item ? String(item.status) : item.tone === "danger" ? "Immediate coaching" : "Watch list"}</small>
+                  </div>
+                  <div className="mini-risk-meter"><i style={{ width: `${Math.max(item.value, 4)}%` }} /></div>
+                  <span>{item.value}%</span>
+                </article>
               ))}
               {!summary.departmentRisk.length && isAdmin && <div className="empty-mini">Run scans to see which department needs policy coaching first.</div>}
             </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label={isAdmin ? "Business outcome" : "Send readiness"} title={isAdmin ? "Risk caught before delivery" : "Drafts that still need fixes"} />
-            <div className="trend-chart">
-              {summary.trend.map((point, index) => <i key={`${point}-${index}`} style={{ height: `${Math.max((point / maxTrend) * 100, 8)}%` }} />)}
-            </div>
-            <div className="report-value-note">
-              {isAdmin ? "Use this to prove how many risky sections were stopped before employees sent them." : "Each bar is a check where ComplyLens found language you should fix before sending."}
-            </div>
-          </section>
-
-          <section className="ops-card">
-            <PanelTitle label="Policy coaching" title={isAdmin ? "Rules causing the most rewrites" : "Rules I keep triggering"} />
+            <PanelTitle label={isAdmin ? "Policy drift" : "Risky phrase coaching"} title={isAdmin ? "Rules causing rewrites and old-version risk" : "Language to avoid next time"} />
             <div className="heatmap-list">
               {summary.policyViolations.map((item, index) => (
                 <div className={`heatmap-row tone-${item.tone}`} key={`${item.label}-${index}`}>
@@ -122,34 +148,41 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
             </div>
           </section>
 
+          <section className="ops-card">
+            <PanelTitle label={isAdmin ? "Risk prevented" : "Improvement"} title={isAdmin ? "Blocked risk by scan date" : "Plain-language progress"} />
+            <div className="trend-chart report-outcome-chart">
+              {summary.trend.map((point, index) => <i key={`${point}-${index}`} style={{ height: `${Math.max((point / maxTrend) * 100, 8)}%` }} />)}
+            </div>
+            <div className="report-value-note">
+              {isAdmin ? "This is not traffic. It is risk caught before delivery, useful for judge demos and compliance ROI." : "Use this as a simple progress signal: fewer tall bars means fewer risky phrases in your drafts."}
+            </div>
+          </section>
+        </div>
+
+        <div className="report-evidence-grid">
           <section className="ops-card team-policy-card">
-            <PanelTitle label={isAdmin ? "Evidence trail" : "My evidence"} title={isAdmin ? "Latest scans, invites, and policy actions" : "Recent checks I can export or revisit"} />
-            <div className="team-table">
-              {(isAdmin ? summary.auditEvents : summary.recentSessions).slice(0, 5).map((item) => (
-                "eventType" in item ? (
-                  <div key={item.id}>
-                    <span>{item.title}</span>
-                    <strong>{item.status}</strong>
-                    <small>{item.department} · {item.eventType}</small>
+            <PanelTitle label={isAdmin ? "Audit-ready exports" : "Proof for managers"} title={isAdmin ? "Evidence packets worth exporting" : "Recent checks with simple badges"} />
+            <div className="report-export-list">
+              {summary.evidenceExports.map((item, index) => (
+                <article className={`report-export-row tone-${item.tone}`} key={`${item.title}-${index}`}>
+                  {isAdmin ? <ClipboardCheck size={17} /> : item.value === "Clean" ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}
+                  <div>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
                   </div>
-                ) : (
-                  <div key={item.id}>
-                    <span>{item.documentName}</span>
-                    <strong>{item.score}%</strong>
-                    <small>{item.flaggedSections} findings · {item.department}</small>
-                  </div>
-                )
+                  <span>{item.value}</span>
+                </article>
               ))}
             </div>
           </section>
 
           <section className="ops-card">
-            <PanelTitle label="Decision help" title={isAdmin ? "What to fix operationally" : "What to do before sending"} />
+            <PanelTitle label={isAdmin ? "Operational evidence" : "Useful next habits"} title={isAdmin ? "Latest scans, invites, and policy actions" : "What to fix next"} />
             <div className="insight-list">
-              <div><MessageSquareWarning size={16} /> {isAdmin ? "Coach the department with the highest review workload first." : "Rewrite any sentence that includes promises, private data, or HR-sensitive details."}</div>
-              <div><ShieldCheck size={16} /> {isAdmin ? "Update the policies that repeatedly trigger findings and compare versions before enabling them." : "Use the suggested rewrite, then run analysis again until the draft is ready."}</div>
-              <div><FileText size={16} /> {isAdmin ? "Export high-risk scans as review evidence for legal or compliance signoff." : "Export the report when a manager needs proof that the draft was checked."}</div>
-              <div><CheckCircle2 size={16} /> {isAdmin ? "Invite employees into the workflow instead of handling reviews manually." : "Clean drafts can be sent without opening an admin review ticket."}</div>
+              <div><Target size={16} /> {isAdmin ? "Use the action plan as the admin work queue for the next compliance cycle." : "Open the first Needs rewrite draft and apply the safe rewrite before sending."}</div>
+              <div><MessageSquareWarning size={16} /> {isAdmin ? "Treat repeat offender teams as training targets, not just analytics rows." : "Avoid guarantees, private customer data, HR details, and legal claims unless approved."}</div>
+              <div><ShieldCheck size={16} /> {isAdmin ? "Export audit packets before judge demos or legal reviews." : "Clean drafts can be sent without opening a manager review ticket."}</div>
+              <div><FileText size={16} /> {isAdmin ? "Policy drift should trigger a policy upload, compare, and enable/disable decision." : "Export a report only when a manager needs proof."}</div>
             </div>
           </section>
         </div>

@@ -444,6 +444,51 @@
 ### Notes For Next Agent
 - Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend report smoke tests, and Browser checks for `/dashboard` upload copy and `/reports` report copy.
 
+## Session Update - 2026-05-15
+### Objective
+- Deepen Reports beyond basic charts so they feel like a real compliance operating report.
+
+### Completed
+- Extended backend report summaries with `executiveInsights`, `actionPlan`, and `evidenceExports`.
+- Added admin report signals for estimated financial/risk value protected, blocked-before-send count, reviewer workload/SLA, extension adoption, top risky department, policy drift, repeat offender team, and audit export packets.
+- Added employee report signals for ready-to-send drafts, drafts needing rewrite, repeated risky phrase coaching, plain-language improvement, accepted rewrite count, and proof/export badges.
+- Rebuilt Reports UI into sections:
+  - Executive signal / send decision
+  - Admin action plan / employee fix list
+  - Risk map / draft status
+  - Policy drift / risky phrase coaching
+  - Risk prevented / improvement chart
+  - Audit-ready exports / manager proof
+- Added responsive report layout CSS and fixed duplicate React key warnings.
+
+### Files Modified
+- `backend/app/models.py`
+- `backend/app/services.py`
+- `packages/shared/src/types.ts`
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/styles/workspace.css`
+- `apps/web/src/styles/responsive.css`
+- `handoff.md`
+
+### Architecture Decisions
+- Kept one `/reports/summary` endpoint but made it richer instead of adding many fragmented report endpoints.
+- Risk value is currently a demo estimate derived from finding severity and blocked sessions; production should replace this with customer-approved risk weights.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- Previous report cards were too generic and did not explain operational decisions.
+- React duplicate key warnings occurred when repeated document titles appeared in evidence lists; fixed with indexed stable keys.
+
+### Pending Work
+- Add real rewrite acceptance events instead of estimating accepted rewrites from findings.
+- Add real extension install telemetry instead of using active invited users as rollout proxy.
+- Add actual export buttons for audit packets and report PDFs from the Reports page.
+
+### Notes For Next Agent
+- Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, backend `/reports/summary` smoke tests, and Browser checks for employee/admin `/reports`.
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.

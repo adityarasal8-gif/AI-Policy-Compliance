@@ -19,6 +19,11 @@
   .profile-grid {
     grid-template-columns: 1fr;
   }
+  .report-hero-grid,
+  .report-evidence-grid,
+  .report-ops-grid {
+    grid-template-columns: 1fr;
+  }
   .ops-grid { grid-template-columns: 1fr; }
   .findings-sidebar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .intelligence-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -44,6 +49,9 @@
   .extension-checklist,
   .department-filter-row,
   .integration-grid {
+    grid-template-columns: 1fr;
+  }
+  .report-insight-grid {
     grid-template-columns: 1fr;
   }
   .codex-chat-head,

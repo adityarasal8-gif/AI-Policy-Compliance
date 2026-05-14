@@ -19,7 +19,9 @@ from .models import (
     EmployeeInvite,
     PolicyComparison,
     PolicyReference,
+    ReportAction,
     ReportBar,
+    ReportInsight,
     ReportMetric,
     ReportSummary,
     SavedSession,
@@ -266,19 +268,27 @@ class ComplianceService:
         total_checks = len(sessions)
         risk_prevented = sum(session.flaggedSections for session in sessions)
         clean_sessions = len([session for session in sessions if session.flaggedSections == 0])
+        blocked_sessions = len([session for session in sessions if session.status == "blocked"])
+        rewrite_candidates = sum(len(session.report.violations) for session in sessions)
+        high_risk = sum(1 for session in sessions for violation in session.report.violations if violation.severity in {"high", "critical"})
         avg_score = round(sum(session.score for session in sessions) / total_checks) if total_checks else 100
         clean_rate = round((clean_sessions / total_checks) * 100) if total_checks else 100
+        risk_value = risk_prevented * 850 + high_risk * 2400 + blocked_sessions * 1800
+        open_events = len([event for event in events if event.status == "open"])
+        employees = self.list_employees()
+        invited_users = len(employees)
+        active_users = len([employee for employee in employees if employee.status == "active"])
         if role == "admin":
             metrics = [
-                ReportMetric(label="Messages checked", value=total_checks, delta="saved from real scans", tone="success"),
-                ReportMetric(label="Issues caught", value=risk_prevented, delta="before risky content was sent", tone="warning"),
-                ReportMetric(label="Compliance quality", value=avg_score, suffix="%", delta="average document safety score", tone="success" if avg_score >= 80 else "warning"),
-                ReportMetric(label="Review queue", value=len([event for event in events if event.status == "open"]), delta="admin decisions still open", tone="danger"),
+                ReportMetric(label="Risk value protected", value=risk_value, suffix="$", delta="estimated exposure avoided", tone="success"),
+                ReportMetric(label="Blocked before send", value=blocked_sessions, delta="high-risk drafts stopped", tone="danger" if blocked_sessions else "success"),
+                ReportMetric(label="Reviewer workload", value=open_events, delta="open decisions in queue", tone="danger" if open_events else "success"),
+                ReportMetric(label="Extension adoption", value=round((active_users / max(invited_users, 1)) * 100), suffix="%", delta="active invited users", tone="success"),
             ]
         else:
             metrics = [
                 ReportMetric(label="My checked drafts", value=total_checks, delta="files and messages reviewed", tone="success"),
-                ReportMetric(label="Fixes needed", value=risk_prevented, delta="items to rewrite before sending", tone="warning"),
+                ReportMetric(label="Fixes needed", value=rewrite_candidates, delta="sentences to rewrite before sending", tone="warning"),
                 ReportMetric(label="Ready to send", value=clean_rate, suffix="%", delta="drafts with no risky sections", tone="success"),
                 ReportMetric(label="Writing safety", value=avg_score, suffix="%", delta="average safe-language score", tone="success" if avg_score >= 80 else "warning"),
             ]
@@ -303,6 +313,56 @@ class ComplianceService:
         trend = [trend_counts[key] for key in sorted(trend_counts.keys())[-8:]]
         if not trend:
             trend = [0]
+        top_department = max(department_counts.items(), key=lambda item: item[1], default=("No department", 0))
+        top_policy = policy_counts.most_common(1)[0] if policy_counts else ("No repeated policy", 0)
+        team_counts: Counter[str] = Counter()
+        phrase_counts: Counter[str] = Counter()
+        for session in sessions:
+            team_counts[f"{session.department} / {session.team}"] += session.flaggedSections
+            for violation in session.report.violations:
+                phrase_counts[violation.quote[:54]] += 1
+        top_team = team_counts.most_common(1)[0] if team_counts else ("No team risk", 0)
+        risky_phrase = phrase_counts.most_common(1)[0] if phrase_counts else ("No repeated risky phrase", 0)
+        if role == "admin":
+            executive_insights = [
+                ReportInsight(title="Financial risk prevented", value=f"${risk_value:,}", detail=f"{risk_prevented} findings and {blocked_sessions} blocked drafts converted into estimated avoided exposure.", tone="success"),
+                ReportInsight(title="Top risky department", value=top_department[0], detail=f"{top_department[1]} risk signals. Start coaching and policy refresh here first.", tone="warning" if top_department[1] else "neutral"),
+                ReportInsight(title="Policy drift", value=top_policy[0], detail=f"{top_policy[1]} recent findings map to this policy. Compare latest policy version before more reviews pile up.", tone="warning" if top_policy[1] else "neutral"),
+                ReportInsight(title="Reviewer SLA", value=f"{open_events} open", detail="Open audit events should be cleared before end of business day for critical communications.", tone="danger" if open_events else "success"),
+                ReportInsight(title="Repeat offender", value=top_team[0], detail=f"{top_team[1]} risk signals by team/document stream. Create a targeted playbook.", tone="warning" if top_team[1] else "neutral"),
+                ReportInsight(title="Extension adoption", value=f"{active_users}/{invited_users}", detail="Active employee accounts indicate extension rollout readiness and training coverage.", tone="success"),
+            ]
+            action_plan = [
+                ReportAction(label=f"Coach {top_department[0]}", owner="Compliance lead", priority="high" if top_department[1] else "medium", detail="Review the top flagged messages and publish simple allowed-language examples."),
+                ReportAction(label=f"Refresh {top_policy[0]}", owner="Policy owner", priority="high" if top_policy[1] else "medium", detail="Upload the latest policy, compare version changes, then disable stale chunks."),
+                ReportAction(label="Clear reviewer queue", owner="Legal reviewer", priority="critical" if open_events > 5 else "medium", detail="Resolve open audit events and export evidence for critical scans."),
+                ReportAction(label="Deploy extension to remaining users", owner="IT admin", priority="medium", detail="Invite employees and verify extension activation before the next review window."),
+            ]
+            evidence_exports = [
+                ReportInsight(title="Audit packet", value=f"{len(events)} events", detail="Export audit trail with scans, invites, policy updates, and reviewer decisions.", tone="neutral"),
+                ReportInsight(title="Blocked-message evidence", value=str(blocked_sessions), detail="Attach high-risk blocked scans to legal review packs.", tone="danger" if blocked_sessions else "success"),
+                ReportInsight(title="Policy evidence", value=str(len(self.policy_store.references)), detail="Show active policy chunks and version status during compliance review.", tone="neutral"),
+            ]
+        else:
+            needs_rewrite = [session for session in sessions if session.flaggedSections > 0]
+            latest_ready = next((session.documentName for session in sessions if session.flaggedSections == 0), "No clean draft yet")
+            executive_insights = [
+                ReportInsight(title="Ready to send", value=str(clean_sessions), detail=f"Latest clean draft: {latest_ready}. Clean drafts do not need a review ticket.", tone="success"),
+                ReportInsight(title="Needs rewrite", value=str(len(needs_rewrite)), detail="Open these drafts, apply safe rewrites, and run analysis again before sending.", tone="warning" if needs_rewrite else "success"),
+                ReportInsight(title="Repeated risky phrase", value=risky_phrase[0], detail=f"Seen {risky_phrase[1]} times. Avoid this wording in future customer or HR communication.", tone="warning" if risky_phrase[1] else "neutral"),
+                ReportInsight(title="Plain-language improvement", value=f"{clean_rate}%", detail="This is the share of your checked drafts that were already safe enough to send.", tone="success" if clean_rate >= 70 else "warning"),
+                ReportInsight(title="Accepted rewrites", value=str(rewrite_candidates), detail="Use the suggested rewrites for these findings, then re-check the draft.", tone="neutral"),
+            ]
+            action_plan = [
+                ReportAction(label=session.documentName, owner="You", priority="high" if session.status == "blocked" else "medium", detail=f"{session.flaggedSections} findings. Rewrite before sending.")
+                for session in needs_rewrite[:4]
+            ] or [
+                ReportAction(label="No rewrite work", owner="You", priority="low", detail="Your recent drafts are clean. Keep checking customer, vendor, HR, and legal messages.")
+            ]
+            evidence_exports = [
+                ReportInsight(title=session.documentName, value="Clean" if session.flaggedSections == 0 else "Needs rewrite", detail=f"{session.score}% safety score. Export if a manager needs proof.", tone="success" if session.flaggedSections == 0 else "warning")
+                for session in sessions[:4]
+            ]
         return ReportSummary(
             role="admin" if role == "admin" else "employee",
             generatedAt=self._now(),
@@ -312,6 +372,9 @@ class ComplianceService:
             trend=trend,
             recentSessions=sessions[:8],
             auditEvents=events[:8],
+            executiveInsights=executive_insights,
+            actionPlan=action_plan,
+            evidenceExports=evidence_exports,
         )
 
     def _meaningful_terms(self, text: str) -> list[str]:
