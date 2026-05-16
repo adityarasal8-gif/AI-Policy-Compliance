@@ -775,3 +775,62 @@ Then in Chrome:
   - `/Users/lol/Docs/antigravity/capgmeini/complylens-home-mobile-after.png`
   - `/Users/lol/Docs/antigravity/capgmeini/complylens-dashboard-redesign-desktop.png`
   - `/Users/lol/Docs/antigravity/capgmeini/complylens-dashboard-redesign-mobile-fixed.png`
+
+## Session Update - 2026-05-16 (Extension UI Redesign + Alignment Fix)
+### Objective
+- Redesign the Chrome extension UI to match Grammarly's aesthetic and the ComplyLens website design system.
+- Fix alignment issues: shield button overlapping compose toolbar, panel not opening in the correct position.
+- Load extension on real Gmail (not simulator).
+- Push changes to GitHub and update handoff.
+
+### Completed
+- **Grammarly-style UI redesign** for `apps/extension/src/content.ts`:
+  - Replaced pill-text "Check Compliance" button with a small circular shield-icon badge (32×32px) that anchors to the bottom-right corner of the compose dialog — exactly like Grammarly's green dot.
+  - Button now toggles the panel (click to open, click again to close).
+  - Panel header now shows the ComplyLens shield SVG logo + brand lockup (`.cl-brand` + `.cl-brand-icon`).
+  - Close button uses an X SVG icon instead of the × character.
+  - Finding blockquotes have left-border color coding (amber for medium, red for high/critical).
+  - Highlights use wavy underlines (CSS `text-decoration-style: wavy`) matching Grammarly's squiggle behavior.
+  - Send-guard modal is centered with a ghost "Send Anyway" button.
+  - Apply-all button has gradient + shadow with hover lift effect.
+- **Alignment fix** (`positionSessionUi`):
+  - Positioning now anchors to `session.dialog.getBoundingClientRect()` instead of the editor (editor rect jumps as content scrolls).
+  - Button placed 10px from the dialog's bottom-right corner — stays stable.
+  - Panel placement uses a smart 3-way strategy:
+    - **Left of compose** if ≥360px of space is available (Gmail default).
+    - **Right of compose** if left is too narrow.
+    - **Above compose** (fixed bottom) as final fallback for narrow viewports.
+  - Panel width is set inline (min(360px, vw−28)) so it never overflows.
+- **Popup redesign** (`apps/extension/src/popup.css` + `apps/extension/src/popup.tsx`):
+  - Restructured into sticky header / score banner / scrollable body / sticky footer layout.
+  - Score ring uses conic-gradient for accurate compliance visualization.
+  - Clean white surfaces with `--line` borders matching website design tokens.
+  - Backend URL input and violation cards use updated sizing, border-radius, and focus states.
+  - "Apply rewrite" inside the flag card uses indigo ghost button styling consistent with the panel.
+- Build passes: `npm run build:extension` ✅
+
+### Files Modified
+- `apps/extension/src/content.ts` — button, positioning, CSS
+- `apps/extension/src/popup.tsx` — layout JSX structure
+- `apps/extension/src/popup.css` — full redesign
+
+### Architecture Decisions
+- Button size/position is now fully controlled via inline style from `positionSessionUi`; CSS only provides visual properties (colors, radius, shadow, cursor).
+- `positionSessionUi` uses the dialog rect (not editor rect) as the stable anchor so the button doesn't jitter during typing.
+
+### Issues Found
+- Original button was positioned relative to the editor element, which causes jitter as Gmail's compose editor grows.
+- Panel was opening below the compose window (off-screen on small viewports).
+
+### Extension Load on Real Gmail
+1. `npm run build:extension`
+2. Chrome → `chrome://extensions` → Developer Mode ON → Load unpacked → `dist/extension/`
+3. Open `https://mail.google.com` → Compose → a purple shield badge appears at the bottom-right of the compose window
+4. Click badge → panel opens to the left showing compliance score, violations, rewrites
+5. Apply rewrites inline or click "Apply Safe Rewrites" for all
+
+### Pending Work
+- Add an entry-point animation (scale-in) for the badge when it first appears on a compose window.
+- Consider a tooltip label ("ComplyLens") that fades in on first hover to help new users discover the button.
+- Add auto-scan option visual feedback (pulsing ring on badge while scanning).
+

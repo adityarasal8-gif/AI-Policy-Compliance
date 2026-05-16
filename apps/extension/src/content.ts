@@ -91,8 +91,16 @@ function createSession(editor: HTMLElement, dialog: HTMLElement): ComposeSession
   const button = document.createElement("button");
   button.className = `${ROOT_CLASS} complylens-check-button`;
   button.type = "button";
-  button.textContent = "Check Compliance";
-  button.addEventListener("click", () => void runScan(session));
+  button.title = "ComplyLens — Check Compliance";
+  button.setAttribute("aria-label", "ComplyLens - Check Compliance");
+  button.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
+  button.addEventListener("click", () => {
+    if (session.panel.hidden) {
+      void runScan(session);
+    } else {
+      hidePanel(session);
+    }
+  });
 
   const panel = document.createElement("aside");
   panel.className = `${ROOT_CLASS} complylens-panel`;
@@ -120,18 +128,57 @@ function createSession(editor: HTMLElement, dialog: HTMLElement): ComposeSession
 }
 
 function positionSessionUi(session: ComposeSession) {
-  const rect = session.dialog.getBoundingClientRect();
-  const left = Math.max(18, Math.min(window.innerWidth - 190, rect.right - 184));
-  const top = Math.max(18, rect.bottom - 58);
+  // Use the compose dialog rect for stable anchoring (the editor itself scrolls)
+  const dialogRect = session.dialog.getBoundingClientRect();
+
+  // ── Shield button: sits in the bottom-right corner of the compose window,
+  //    overlapping its own border so it looks like a Grammarly-style badge.
+  const btnSize = 32;
+  const btnRight = dialogRect.right - btnSize - 10;   // 10px from right edge
+  const btnTop   = dialogRect.bottom - btnSize - 10;  // 10px up from bottom edge
+
   Object.assign(session.button.style, {
-    left: `${left}px`,
-    top: `${top}px`
+    left:   `${Math.max(0, btnRight)}px`,
+    top:    `${Math.max(0, btnTop)}px`,
+    width:  `${btnSize}px`,
+    height: `${btnSize}px`
   });
 
-  Object.assign(session.panel.style, {
-    right: `${Math.max(18, window.innerWidth - Math.min(window.innerWidth - 18, rect.right + 390))}px`,
-    top: `${Math.max(18, rect.top)}px`
-  });
+  // ── Side panel: prefer left of dialog; fall back to right if not enough room.
+  const panelWidth  = Math.min(360, window.innerWidth - 28);
+  const panelTop    = Math.max(10, dialogRect.top);
+  const spaceLeft   = dialogRect.left - 16;
+  const spaceRight  = window.innerWidth - dialogRect.right - 16;
+
+  if (spaceLeft >= panelWidth) {
+    // Open to the LEFT of compose
+    Object.assign(session.panel.style, {
+      right:  `${window.innerWidth - dialogRect.left + 8}px`,
+      left:   "auto",
+      top:    `${panelTop}px`,
+      bottom: "auto",
+      width:  `${panelWidth}px`
+    });
+  } else if (spaceRight >= panelWidth) {
+    // Open to the RIGHT of compose
+    Object.assign(session.panel.style, {
+      left:   `${dialogRect.right + 8}px`,
+      right:  "auto",
+      top:    `${panelTop}px`,
+      bottom: "auto",
+      width:  `${panelWidth}px`
+    });
+  } else {
+    // Not enough room on either side — float above compose, full-width-capped
+    const panelBottom = window.innerHeight - dialogRect.top + 8;
+    Object.assign(session.panel.style, {
+      right:  `${Math.max(10, window.innerWidth - dialogRect.right)}px`,
+      left:   "auto",
+      top:    "auto",
+      bottom: `${panelBottom}px`,
+      width:  `${panelWidth}px`
+    });
+  }
 }
 
 async function runScan(session: ComposeSession) {
@@ -161,8 +208,11 @@ function showPanel(session: ComposeSession, state: "loading" | "error", message 
   session.panel.hidden = false;
   session.panel.innerHTML = `
     <div class="cl-panel-head">
-      <div><strong>ComplyLens</strong><span>Gmail compliance copilot</span></div>
-      <button class="cl-icon-button" data-close-panel>×</button>
+      <div class="cl-brand">
+        <div class="cl-brand-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <div><strong>ComplyLens</strong><span>Gmail compliance copilot</span></div>
+      </div>
+      <button class="cl-icon-button" data-close-panel><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="cl-state ${state}">
       <strong>${state === "loading" ? "Scanning draft..." : "Unable to scan"}</strong>
@@ -182,8 +232,11 @@ function renderPanel(session: ComposeSession) {
   session.panel.hidden = false;
   session.panel.innerHTML = `
     <div class="cl-panel-head">
-      <div><strong>ComplyLens</strong><span>Gmail compliance copilot</span></div>
-      <button class="cl-icon-button" data-close-panel>×</button>
+      <div class="cl-brand">
+        <div class="cl-brand-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <div><strong>ComplyLens</strong><span>Gmail compliance copilot</span></div>
+      </div>
+      <button class="cl-icon-button" data-close-panel><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
     <div class="cl-score-card ${analysis.riskLevel === "High risk" ? "critical" : analysis.riskLevel === "Needs review" ? "warning" : "success"}">
       <div><span>${analysis.score}%</span><small>Compliance Score</small></div>
@@ -391,57 +444,64 @@ function installStyles() {
   const style = document.createElement("style");
   style.id = "complylens-extension-styles";
   style.textContent = `
-    .${ROOT_CLASS} { box-sizing: border-box; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .${ROOT_CLASS} { box-sizing: border-box; font-family: "Geist", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .complylens-check-button {
-      position: fixed; z-index: 2147483645; min-height: 38px; padding: 0 14px; border: 1px solid rgba(79,70,229,.18);
-      border-radius: 999px; color: #fff; background: linear-gradient(135deg,#4f46e5,#7c3aed);
-      box-shadow: 0 18px 42px rgba(79,70,229,.28); font: 850 12px Inter,system-ui,sans-serif; cursor: pointer;
-      transition: transform .16s ease, box-shadow .16s ease, opacity .16s ease;
+      position: fixed; z-index: 2147483645; border: 1.5px solid rgba(255,255,255,.4);
+      border-radius: 50%; color: #fff; background: linear-gradient(135deg,#4f46e5,#6d5dfc);
+      box-shadow: 0 4px 16px rgba(79,70,229,.38), 0 0 0 2px rgba(79,70,229,.16); cursor: pointer; display: grid; place-items: center;
+      transition: transform .18s ease, box-shadow .18s ease;
     }
-    .complylens-check-button:hover { transform: translateY(-1px); box-shadow: 0 22px 52px rgba(79,70,229,.34); }
+    .complylens-check-button:hover { transform: scale(1.1); box-shadow: 0 6px 22px rgba(79,70,229,.48), 0 0 0 3px rgba(79,70,229,.2); }
     .complylens-panel {
-      position: fixed; z-index: 2147483646; width: min(390px, calc(100vw - 28px)); max-height: min(760px, calc(100vh - 36px)); overflow: auto;
-      padding: 14px; border: 1px solid rgba(148,163,184,.22); border-radius: 22px; color: #0f172a;
-      background: rgba(255,255,255,.88); box-shadow: 0 28px 78px rgba(15,23,42,.18); backdrop-filter: blur(18px);
+      position: fixed; z-index: 2147483646; max-height: min(600px, calc(100vh - 36px)); overflow-y: auto; overflow-x: hidden;
+      padding: 16px; border: 1px solid rgba(148,163,184,.18); border-radius: 24px; color: #0f172a;
+      background: rgba(255,255,255,.97); box-shadow: 0 24px 70px rgba(15,23,42,.12); backdrop-filter: blur(18px);
     }
-    .cl-panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 12px; }
+    .cl-panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .cl-brand { display: flex; align-items: center; gap: 10px; }
+    .cl-brand-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: #fff; background: linear-gradient(135deg,#4f46e5,#6d5dfc); box-shadow: 0 6px 14px rgba(79,70,229,.22); flex-shrink: 0; }
     .cl-panel-head strong, .cl-panel-head span { display: block; }
-    .cl-panel-head strong { font-size: 15px; }
-    .cl-panel-head span, .cl-state span, .cl-score-card p, .cl-finding p, .cl-policy span, .cl-rewrite span { color: #64748b; line-height: 1.45; }
-    .cl-icon-button { width: 30px; height: 30px; border: 1px solid rgba(148,163,184,.22); border-radius: 999px; background: rgba(248,250,252,.9); color: #64748b; cursor: pointer; }
-    .cl-state, .cl-clean { padding: 13px; border-radius: 16px; background: rgba(248,250,252,.84); }
-    .cl-state.error { color: #b91c1c; background: rgba(254,242,242,.86); }
-    .cl-score-card { display: grid; grid-template-columns: 86px minmax(0,1fr); gap: 12px; padding: 13px; border-radius: 18px; background: rgba(248,250,252,.9); border: 1px solid rgba(148,163,184,.18); }
-    .cl-score-card div:first-child { display: grid; place-items: center; width: 74px; height: 74px; border-radius: 999px; background: #fff; box-shadow: inset 0 0 0 8px rgba(79,70,229,.14); }
-    .cl-score-card.warning div:first-child { box-shadow: inset 0 0 0 8px rgba(245,158,11,.22); }
-    .cl-score-card.critical div:first-child { box-shadow: inset 0 0 0 8px rgba(239,68,68,.2); }
-    .cl-score-card span { font-size: 18px; font-weight: 950; }
-    .cl-score-card small { color: #64748b; font-size: 10px; font-weight: 850; text-transform: uppercase; }
-    .cl-score-card strong { display: block; margin-top: 6px; font-size: 18px; }
-    .cl-section-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 13px 0 10px; color: #475569; font-size: 12px; font-weight: 850; }
+    .cl-panel-head strong { font-size: 16px; letter-spacing: -0.015em; }
+    .cl-panel-head span, .cl-state span, .cl-score-card p, .cl-finding p, .cl-policy span, .cl-rewrite span { color: #64748b; line-height: 1.5; font-size: 13px; }
+    .cl-icon-button { width: 30px; height: 30px; border: 1px solid rgba(148,163,184,.22); border-radius: 50%; background: rgba(248,250,252,.9); color: #64748b; cursor: pointer; display: grid; place-items: center; }
+    .cl-state, .cl-clean { padding: 14px; border-radius: 16px; background: rgba(248,250,252,.84); border: 1px solid rgba(148,163,184,.12); }
+    .cl-state.error { color: #b91c1c; background: rgba(254,242,242,.86); border-color: rgba(239,68,68,.18); }
+    .cl-score-card { display: grid; grid-template-columns: 70px minmax(0,1fr); gap: 14px; padding: 14px; border-radius: 20px; background: rgba(248,250,252,.9); border: 1px solid rgba(148,163,184,.18); }
+    .cl-score-card div:first-child { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 6px rgba(79,70,229,.14); }
+    .cl-score-card.warning div:first-child { box-shadow: inset 0 0 0 6px rgba(245,158,11,.22); }
+    .cl-score-card.critical div:first-child { box-shadow: inset 0 0 0 6px rgba(239,68,68,.2); }
+    .cl-score-card span { font-size: 16px; font-weight: 800; }
+    .cl-score-card small { color: #64748b; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .cl-score-card strong { display: block; margin-top: 4px; font-size: 16px; letter-spacing: -0.01em; }
+    .cl-section-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 16px 0 12px; color: #475569; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
     .cl-section-title button, .cl-finding button, .cl-apply-all, .cl-modal-card button {
-      min-height: 34px; padding: 0 11px; border: 1px solid rgba(79,70,229,.18); border-radius: 999px; background: rgba(238,242,255,.86); color: #4f46e5; font-weight: 850; cursor: pointer;
+      min-height: 34px; padding: 0 14px; border: 1px solid rgba(79,70,229,.18); border-radius: 999px; background: rgba(238,242,255,.86); color: #4f46e5; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.15s ease;
     }
-    .cl-findings { display: grid; gap: 10px; }
-    .cl-finding { display: grid; gap: 9px; padding: 12px; border: 1px solid rgba(148,163,184,.2); border-radius: 18px; background: rgba(255,255,255,.76); }
-    .cl-finding.high, .cl-finding.critical { border-color: rgba(239,68,68,.22); }
-    .cl-finding.medium { border-color: rgba(245,158,11,.24); }
+    .cl-section-title button:hover, .cl-finding button:hover, .cl-modal-card button:hover { background: rgba(224,231,255,.9); transform: translateY(-1px); }
+    .cl-findings { display: grid; gap: 12px; }
+    .cl-finding { display: grid; gap: 10px; padding: 14px; border: 1px solid rgba(148,163,184,.2); border-radius: 20px; background: rgba(255,255,255,.8); box-shadow: 0 8px 24px rgba(15,23,42,.03); }
+    .cl-finding.high, .cl-finding.critical { border-color: rgba(239,68,68,.26); }
+    .cl-finding.medium { border-color: rgba(245,158,11,.28); }
     .cl-finding-top { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
-    .cl-finding-top strong { text-transform: capitalize; }
-    .cl-finding-top span { color: #64748b; font-size: 12px; font-weight: 850; }
-    .cl-finding blockquote { margin: 0; padding: 9px; border-radius: 12px; background: rgba(255,251,235,.9); color: #92400e; }
-    .cl-policy, .cl-rewrite { display: grid; gap: 4px; padding: 10px; border-radius: 13px; background: rgba(248,250,252,.9); }
-    .cl-rewrite { background: rgba(236,253,245,.9); }
+    .cl-finding-top strong { text-transform: capitalize; font-size: 14px; }
+    .cl-finding-top span { color: #64748b; font-size: 12px; font-weight: 700; }
+    .cl-finding blockquote { margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255,251,235,.9); color: #92400e; font-size: 14px; line-height: 1.5; border-left: 3px solid #f59e0b; }
+    .cl-finding.high blockquote, .cl-finding.critical blockquote { background: rgba(254,242,242,.9); color: #991b1b; border-left-color: #ef4444; }
+    .cl-policy, .cl-rewrite { display: grid; gap: 4px; padding: 12px; border-radius: 14px; background: rgba(248,250,252,.9); font-size: 13px; border: 1px solid rgba(148,163,184,.1); }
+    .cl-rewrite { background: rgba(236,253,245,.9); border-color: rgba(16,185,129,.15); }
     .cl-rewrite b, .cl-rewrite span { color: #047857; }
-    .cl-apply-all { width: 100%; margin-top: 12px; color: #fff; background: linear-gradient(135deg,#4f46e5,#7c3aed); }
-    .${HIGHLIGHT_CLASS} { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; border-radius: 4px; background: rgba(245,158,11,.12); box-shadow: 0 0 0 2px rgba(245,158,11,.08); }
-    .${HIGHLIGHT_CLASS}.severity-critical, .${HIGHLIGHT_CLASS}.severity-high { background: rgba(239,68,68,.11); box-shadow: 0 0 0 2px rgba(239,68,68,.08); }
-    .complylens-modal { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: rgba(15,23,42,.22); backdrop-filter: blur(5px); }
+    .cl-apply-all { width: 100%; margin-top: 14px; color: #fff; background: linear-gradient(135deg,#4f46e5,#6d5dfc); border: 1px solid rgba(79,70,229,.26); box-shadow: 0 12px 24px rgba(79,70,229,.18); }
+    .cl-apply-all:hover { box-shadow: 0 16px 32px rgba(79,70,229,.25); transform: translateY(-1px); }
+    .${HIGHLIGHT_CLASS} { text-decoration: underline; text-decoration-style: wavy; text-decoration-color: #f59e0b; text-decoration-thickness: 2px; text-underline-offset: 3px; border-radius: 3px; background: rgba(245,158,11,.1); }
+    .${HIGHLIGHT_CLASS}.severity-critical, .${HIGHLIGHT_CLASS}.severity-high { text-decoration-color: #ef4444; background: rgba(239,68,68,.08); }
+    .complylens-modal { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: rgba(15,23,42,.3); backdrop-filter: blur(6px); }
     .complylens-modal[hidden], .complylens-panel[hidden] { display: none; }
-    .cl-modal-card { width: min(430px, calc(100vw - 32px)); padding: 18px; border: 1px solid rgba(255,255,255,.7); border-radius: 22px; background: rgba(255,255,255,.94); box-shadow: 0 34px 90px rgba(15,23,42,.24); }
-    .cl-modal-card strong { display: block; font-size: 18px; }
-    .cl-modal-card p { color: #64748b; line-height: 1.5; }
-    .cl-modal-card div { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cl-modal-card { width: min(430px, calc(100vw - 32px)); padding: 24px; border: 1px solid rgba(255,255,255,.8); border-radius: 28px; background: rgba(255,255,255,.96); box-shadow: 0 34px 90px rgba(15,23,42,.24); text-align: center; }
+    .cl-modal-card strong { display: block; font-size: 20px; letter-spacing: -0.02em; margin-bottom: 10px; }
+    .cl-modal-card p { color: #64748b; line-height: 1.6; font-size: 14px; margin-bottom: 24px; }
+    .cl-modal-card div { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .cl-modal-card button[data-send-anyway] { background: transparent; border-color: rgba(148,163,184,.3); color: #64748b; }
+    .cl-modal-card button[data-send-anyway]:hover { background: rgba(241,245,249,.8); }
   `;
   document.documentElement.appendChild(style);
 }

@@ -68,11 +68,11 @@ function Popup() {
     <main className="popup-shell">
       <header>
         <div className="mark">
-          <Shield size={18} />
+          <Shield size={17} />
         </div>
-        <div>
+        <div className="header-text">
           <h1>ComplyLens</h1>
-          <p>Gmail compliance check</p>
+          <p>Gmail compliance copilot</p>
         </div>
       </header>
 
@@ -80,54 +80,57 @@ function Popup() {
         <div className="risk-score">
           <span>{report.score}%</span>
         </div>
-        <div>
-          <span>Risk Score</span>
-          <strong>{report.status === "blocked" ? "Medium-high" : "Ready"}</strong>
-          <p>{report.flaggedSections} policy risks detected.</p>
+        <div className="risk-info">
+          <span>Compliance Score</span>
+          <strong>{report.status === "blocked" ? "Needs Review" : "Ready to Send"}</strong>
+          <p>{report.flaggedSections} policy risk{report.flaggedSections === 1 ? "" : "s"} detected.</p>
         </div>
       </section>
 
-      <section className="extension-config">
-        <label>
-          <span><KeyRound size={14} /> Backend URL</span>
-          <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
-        </label>
-        <button className={connected ? "config-button connected" : "config-button"} disabled={loading} onClick={() => void testConnection()} type="button">
-          {connected ? "Connected" : "Test"}
-        </button>
-      </section>
-
-      <textarea value={draft} onChange={(event) => setDraft(event.target.value)} spellCheck={false} />
-
-      <button className="scan-button" disabled={loading} onClick={() => void scanDraft()} type="button">
-        {loading ? <RefreshCw size={15} /> : <MailCheck size={15} />}
-        {loading ? "Scanning..." : "Scan with backend"}
-      </button>
-      {notice && <div className="popup-notice">{notice}</div>}
-
-      {firstViolation ? (
-        <motion.section animate={{ opacity: 1, y: 0 }} className="flag" initial={{ opacity: 0, y: 6 }}>
-          <div className="flag-title">
-            <AlertTriangle size={16} />
-            <strong>{firstViolation.policySection}</strong>
-          </div>
-          <p>{firstViolation.explanation}</p>
-          <div className="rewrite">
-            <Wand2 size={15} />
-            <span>{firstViolation.rewrite}</span>
-          </div>
-          <button onClick={() => setDraft(applyRewrite(draft, firstViolation))} type="button">Apply rewrite</button>
-        </motion.section>
-      ) : (
-        <section className="clean">
-          <CheckCircle2 size={18} />
-          <span>No violations found in this draft.</span>
+      <div className="popup-body">
+        <section className="extension-config">
+          <label>
+            <span><KeyRound size={13} /> Backend URL</span>
+            <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
+          </label>
+          <button className={connected ? "config-button connected" : "config-button"} disabled={loading} onClick={() => void testConnection()} type="button">
+            {connected ? "✓ Live" : "Test"}
+          </button>
         </section>
-      )}
+
+        <textarea value={draft} onChange={(event) => setDraft(event.target.value)} spellCheck={false} />
+
+        <button className="scan-button" disabled={loading} onClick={() => void scanDraft()} type="button">
+          {loading ? <RefreshCw size={14} /> : <MailCheck size={14} />}
+          {loading ? "Scanning..." : "Scan with backend"}
+        </button>
+
+        {notice && <div className="popup-notice">{notice}</div>}
+
+        {firstViolation ? (
+          <motion.section animate={{ opacity: 1, y: 0 }} className="flag" initial={{ opacity: 0, y: 6 }}>
+            <div className="flag-title">
+              <AlertTriangle size={15} />
+              <strong>{firstViolation.policySection}</strong>
+            </div>
+            <p>{firstViolation.explanation}</p>
+            <div className="rewrite">
+              <Wand2 size={14} />
+              <span>{firstViolation.rewrite}</span>
+            </div>
+            <button onClick={() => setDraft(applyRewrite(draft, firstViolation))} type="button">Apply rewrite</button>
+          </motion.section>
+        ) : (
+          <section className="clean">
+            <CheckCircle2 size={17} />
+            <span>No violations found in this draft.</span>
+          </section>
+        )}
+      </div>
 
       <footer>
-        <MailCheck size={15} />
-        Same API as the web app
+        <MailCheck size={14} />
+        Same API as the ComplyLens web app
       </footer>
     </main>
   );
