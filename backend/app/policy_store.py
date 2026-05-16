@@ -13,34 +13,6 @@ from .models import PolicyReference
 TOKEN_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9'-]{2,}")
 
 
-SEED_POLICIES = [
-    {
-        "policy": "HR Confidentiality Handbook",
-        "section": "2.4 Compensation Privacy",
-        "owner": "HR",
-        "text": "Employee salary, bonus, and compensation details must never be shared in public channels or external emails.",
-    },
-    {
-        "policy": "Commercial Communications Policy",
-        "section": "4.1 Delivery Commitments",
-        "owner": "Legal",
-        "text": "Written delivery dates, service guarantees, or refund commitments require legal approval before being sent.",
-    },
-    {
-        "policy": "Customer Data Handling Standard",
-        "section": "3.2 External Sharing",
-        "owner": "Security",
-        "text": "Customer records, credentials, account IDs, and personal data cannot be shared outside approved systems.",
-    },
-    {
-        "policy": "Forward-Looking Statements Guide",
-        "section": "1.3 Forecast Disclaimer",
-        "owner": "Finance",
-        "text": "Any written discussion of future revenue, profit, or market performance must include the approved finance disclaimer.",
-    },
-]
-
-
 @dataclass
 class PolicyChunk:
     reference: PolicyReference
@@ -112,15 +84,7 @@ class PolicyStore:
         return [chunk.reference for chunk in self._chunks]
 
     def load_seed_policies(self) -> None:
-        if self._chunks:
-            return
-        for policy in SEED_POLICIES:
-            self.add_policy_text(
-                text=policy["text"],
-                policy=policy["policy"],
-                section=policy["section"],
-                owner=policy["owner"],
-            )
+        return
 
     def load_references(self, references: list[PolicyReference]) -> None:
         self._chunks = [PolicyChunk(reference=reference, vector=vectorize(reference.text)) for reference in references]

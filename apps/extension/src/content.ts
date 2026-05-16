@@ -1,4 +1,4 @@
-import { applyRewrite, runDemoComplianceCheck, type ComplianceReport, type RewriteResponse, type Violation } from "@complylens/shared";
+import { applyRewrite, type ComplianceReport, type RewriteResponse, type Violation } from "@complylens/shared";
 
 const FAB_ID = "complylens-gmail-fab";
 const TOOLTIP_ID = "complylens-gmail-tooltip";
@@ -80,6 +80,13 @@ function getDraftSnapshot(): DraftSnapshot {
     .filter(Boolean)
     .join("\n\n");
   return { subject, body, combined };
+}
+
+function getCurrentState() {
+  return {
+    snapshot: getDraftSnapshot(),
+    report: latestReport,
+  };
 }
 
 function setLatestSnapshot(snapshot: DraftSnapshot) {
@@ -462,7 +469,7 @@ async function applyFirstRewrite() {
     try {
       latestReport = await analyzeDraft(snapshot.combined);
     } catch {
-      latestReport = runDemoComplianceCheck(snapshot.combined);
+      latestReport = null;
     }
     lastScanAt = Date.now();
     renderTooltip("ready");
@@ -486,12 +493,9 @@ async function scanDraft(snapshot?: DraftSnapshot) {
     lastScanAt = Date.now();
     renderTooltip("ready");
   } catch (error) {
-    latestReport = runDemoComplianceCheck(next.combined);
+    latestReport = null;
     lastScanAt = Date.now();
-    renderTooltip(
-      "ready",
-      `Backend unavailable, showing local analysis. ${error instanceof Error ? error.message.slice(0, 120) : ""}`
-    );
+    renderTooltip("error", `Backend unavailable. ${error instanceof Error ? error.message.slice(0, 120) : ""}`);
   }
 }
 
@@ -512,6 +516,29 @@ function bootstrap() {
   ensureTooltip();
   positionFab();
 }
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "getSnapshot") {
+    sendResponse(getCurrentState());
+    return false;
+  }
+
+  if (message?.type === "scanCurrentDraft") {
+    void scanDraft().then(() => sendResponse(getCurrentState())).catch((error) => {
+      sendResponse({ snapshot: getDraftSnapshot(), report: null, error: (error as Error).message });
+    });
+    return true;
+  }
+
+  if (message?.type === "applyCurrentRewrite") {
+    void applyFirstRewrite().then(() => sendResponse({ ok: true })).catch((error) => {
+      sendResponse({ ok: false, error: (error as Error).message });
+    });
+    return true;
+  }
+
+  return false;
+});
 
 bootstrap();
 setInterval(positionFab, 1200);

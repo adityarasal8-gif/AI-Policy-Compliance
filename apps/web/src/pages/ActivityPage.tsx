@@ -5,12 +5,6 @@ import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import { listAuditEvents, listSavedSessions, markAuditEventReviewed } from "../api/complianceApi";
 import type { AuditEvent, SavedSession } from "@complylens/shared";
 
-const employeeHistory = [
-  { title: "Vendor NDA scan", detail: "DOCX upload checked. 2 risky clauses rewritten.", time: "Today" },
-  { title: "Sales email review", detail: "Pasted text checked. Guarantee language flagged.", time: "Yesterday" },
-  { title: "HR note", detail: "Email draft checked. No policy issues found.", time: "May 12" }
-];
-
 type AuditEventRow = AuditEvent & { tone?: string };
 const departments = ["All", "Legal", "Sales", "HR", "Security", "Finance"];
 
@@ -101,16 +95,15 @@ export function ActivityPage() {
                     </div>
                     <time>{new Date(session.createdAt).toLocaleDateString()}</time>
                   </article>
-                )) : employeeHistory.map((activity) => (
-                  <article className="activity-item tone-good" key={activity.title}>
+                )) : (
+                  <article className="activity-item tone-good">
                     <FileText size={16} />
                     <div>
-                      <strong>{activity.title}</strong>
-                      <span>{activity.detail}</span>
+                      <strong>No saved checks yet</strong>
+                      <span>Run a real analysis from Gmail or the workspace and it will appear here.</span>
                     </div>
-                    <time>{activity.time}</time>
                   </article>
-                ))}
+                )}
               </div>
             </section>
             <section className="ops-card">
@@ -118,7 +111,7 @@ export function ActivityPage() {
               <div className="insight-list">
                 <div><CheckCircle2 size={16} /> {savedSessions.length} saved check{savedSessions.length === 1 ? "" : "s"}</div>
                 <div><ShieldCheck size={16} /> {savedSessions.reduce((total, session) => total + session.report.violations.length, 0)} flagged items total</div>
-                <div><Activity size={16} /> No admin action needed</div>
+                <div><Activity size={16} /> Live backend history only</div>
               </div>
             </section>
           </div>

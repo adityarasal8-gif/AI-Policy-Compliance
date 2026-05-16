@@ -3,7 +3,6 @@ import { AlertTriangle, ArrowUp, BarChart3, CheckCircle2, Database, Download, Fi
 import { Link } from "react-router-dom";
 import {
   applyRewrite,
-  runDemoComplianceCheck,
   type ComplianceReport,
   type Violation
 } from "@complylens/shared";
@@ -12,7 +11,16 @@ import { HighlightedEditor } from "../features/compliance/HighlightedEditor";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import type { Notice } from "../types";
 
-const emptyReport = runDemoComplianceCheck("");
+const emptyReport: ComplianceReport = {
+  score: 0,
+  cleanSections: 0,
+  flaggedSections: 0,
+  status: "ready",
+  source: "backend",
+  summary: "No analysis has been run yet.",
+  violations: [],
+  references: []
+};
 const departments = ["All", "Legal", "Sales", "HR", "Security", "Finance"];
 
 export function DashboardPage() {
@@ -95,15 +103,14 @@ export function DashboardPage() {
       setHiddenIds([]);
       setNotice({ kind: "success", text: "Analysis completed with policy citations." });
     } catch (error) {
-      const fallback = runDemoComplianceCheck(draft);
       setOriginalText(draft);
-      setReport(fallback);
-      setHasRun(true);
-      setActiveId(fallback.violations[0]?.id ?? "");
+      setReport(emptyReport);
+      setHasRun(false);
+      setActiveId("");
       setHiddenIds([]);
       setNotice({
         kind: "error",
-        text: `Backend unavailable, showing local analysis. ${error instanceof Error ? error.message.slice(0, 120) : ""}`
+        text: `Backend unavailable. ${error instanceof Error ? error.message.slice(0, 120) : ""}`
       });
     } finally {
       setLoading(false);

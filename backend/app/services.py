@@ -20,9 +20,6 @@ class ComplianceService:
         saved_references = self.storage.load_references()
         if saved_references:
             self.policy_store.load_references(saved_references)
-        else:
-            self.policy_store.load_seed_policies()
-            self.storage.save_references(self.policy_store.references)
         self.settings = self.storage.load_settings()
         self.employees = self.storage.load_employees()
         self.sessions = self.storage.load_sessions()
@@ -103,12 +100,7 @@ class ComplianceService:
         return employee
 
     def list_employees(self) -> list[Employee]:
-        if self.employees:
-            return self.employees
-        return [
-            Employee(id="emp-demo-1", name="Priya Sharma", email="priya@demo-enterprise.com", department="Legal", role="employee", status="active", invitedAt=self._now()),
-            Employee(id="emp-demo-2", name="Arjun Mehta", email="arjun@demo-enterprise.com", department="Sales", role="employee", status="active", invitedAt=self._now()),
-        ]
+        return self.employees
 
     def update_employee_status(self, employee_id: str, status: str) -> Employee:
         if status not in EMPLOYEE_STATUSES:
