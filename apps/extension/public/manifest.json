@@ -9,11 +9,19 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://mail.google.com/*"],
+      "matches": [
+        "https://mail.google.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
   "permissions": ["activeTab", "storage"],
-  "host_permissions": ["https://mail.google.com/*", "http://localhost:8000/*", "http://127.0.0.1:8000/*"]
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ]
 }
