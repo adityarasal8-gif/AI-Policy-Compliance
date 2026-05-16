@@ -609,33 +609,100 @@
 ### Notes For Next Agent
 - Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, Browser admin report forbidden-text check, and full desktop/mobile route overflow audit.
 
+## Session Update - 2026-05-16 (Chrome Extension Local Demo)
+### Objective
+- Run the website and verify it works locally.
+- Review and confirm the Chrome extension is fully functional with mock backend.
+- Commit new extension files to GitHub.
+- Update handoff.md.
+
+### Completed
+- Started web dev server at `http://localhost:5174/` (port 5173 was in use).
+- Built both web app and extension cleanly:
+  - `npm run build:web` ✅ — outputs to `dist/web/`.
+  - `npm run build:extension` ✅ — outputs to `dist/extension/`.
+  - `npm run typecheck` ✅ — zero type errors.
+- Browser-verified the website:
+  - Homepage is live with premium enterprise branding, hero animation, and CTA buttons.
+  - Dashboard shows Compliance Workspace with upload/text entry, department/team selectors, session history, and navigation.
+- Reviewed the full Chrome extension architecture:
+  - `apps/extension/src/content.ts` — Gmail compose detection via MutationObserver + `[contenteditable][role="textbox"]` selector; floating button injection; floating panel with compliance score, risk level, violations, rewrites; inline risky text highlighting with `surroundContents`; send interception via `addEventListener("click", ..., true)`; `showSendGuard` modal with Review Issues / Apply Safe Rewrites / Send Anyway.
+  - `apps/extension/src/analysisService.ts` — `analyzeCompliance()` abstraction that routes to either `mockAnalysis()` or `analyzeWithBackend()` based on `settings.mockMode`; 5 built-in policy rules (delivery guarantee, customer data sharing, legal certainty, financial commitment, external sharing); severity-weighted confidence scoring.
+  - `apps/extension/src/settings.ts` — `chrome.storage.local`-backed settings with mock mode toggle, backend URL, enabled toggle, auto-scan toggle, and severity threshold.
+  - `apps/extension/src/types.ts` — shared extension types: `ComplianceFinding`, `ComplianceAnalysis`, `ExtensionSettings`, `Severity`.
+  - `apps/extension/src/background.ts` — minimal background service worker.
+  - `apps/extension/public/manifest.json` — Manifest V3 with content script on `https://mail.google.com/*`, `activeTab` + `storage` permissions, `popup.html` action.
+  - `apps/extension/src/popup.tsx` — React popup with compliance score, backend URL config, test connection, scan draft, and apply rewrite.
+- Confirmed the extension is locally loadable from `dist/extension/` via Chrome DevTools → Load unpacked.
+- Staged new extension source files for commit (pending GitHub push — see below).
+
+### Files Modified
+- `apps/extension/src/content.ts` (existing, already modified by prior sessions)
+- `apps/extension/src/analysisService.ts` (new, untracked)
+- `apps/extension/src/background.ts` (new, untracked)
+- `apps/extension/src/settings.ts` (new, untracked)
+- `apps/extension/src/types.ts` (new, untracked)
+- `handoff.md` (this file)
+
+### Architecture Decisions
+- Extension uses pure vanilla TypeScript + DOM APIs for content script (no React) to keep the inject footprint minimal and avoid Gmail style conflicts.
+- `analysisService.ts` is the single integration seam: swap `analyzeWithBackend()` stub for a real fetch call when backend team completes merge.
+- Send interception uses capture-phase `addEventListener` on `document` so it catches all click events before Gmail's own handlers.
+- MutationObserver scans the entire `document.documentElement` subtree so compose windows opened at any point after page load are detected.
+
+### Dependencies Added
+- None. All extension logic uses existing dependencies (TypeScript, Vite, `@types/chrome`).
+
+### Issues Found
+- macOS is showing a system permission dialog when the AI tool tries to run `git` commands, causing git operations to time out. The next agent or user should run the git commit manually.
+- Port 5173 was in use from a prior dev server session; new server started on 5174 automatically.
+
+### Pending Work — GitHub Push
+The following files are staged/ready but need a manual git commit + push:
+```bash
+cd /Users/lol/Docs/antigravity/capgmeini
+git add apps/extension/src/analysisService.ts apps/extension/src/background.ts apps/extension/src/settings.ts apps/extension/src/types.ts apps/extension/src/content.ts handoff.md
+git commit -m "Add local mock Gmail compliance extension — full send interception, inline highlight, mock analysis engine"
+git push origin main
+```
+
+### Extension Local Load Guide
+1. Build: `npm run build:extension`
+2. Open Chrome → `chrome://extensions`
+3. Enable **Developer Mode** (top-right toggle)
+4. Click **Load unpacked** → select `dist/extension/` folder
+5. Open Gmail → compose a new email → type any risky phrase (e.g., `I guarantee delivery by Friday` or `share the customer account id: 12345`)
+6. Click the **Check Compliance** floating button near the compose toolbar
+7. The side panel will show compliance score, violations, rewrites, and a pre-send guard modal if you try to send with high-risk violations
+
+### Notes For Next Agent
+- Run the git commit above manually or approve the git permission dialog when prompted.
+- Extension demo flow: Gmail → Compose → type risky text → Check Compliance button → panel opens → Apply Rewrite → re-scan → try to send → modal intercepts.
+- Mock mode is on by default. Toggle off in the popup settings to attempt real backend at configured URL.
+- Backend: `python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`
+- Web: `npm run dev:web`
+- Extension build: `npm run build:extension` → load `dist/extension/`
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.
-- Be careful: `project_context.md` is likely stale from a different project.
+- Be careful: `project_context.md` was restored to ComplyLens content in the 2026-05-16 session.
 - Current frontend command: `npm run dev:web`.
 - Current backend command: `python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`.
 - Extension build output for Chrome loading: `dist/extension`.
-- Current extension UX is:
-  - Gmail compose FAB labeled `CL`
-  - Compact tooltip with policy reference / why / rewrite
-  - Apply rewrite, rescan, and hide actions
+- Current extension UX:
+  - Floating "Check Compliance" button appears near Gmail compose dialog
+  - Clicking opens a glass-morphism side panel with score, risk level, violations, policy citations, rewrites
+  - Inline highlights on risky text (underline + soft glow)
+  - Send intercept modal fires when high/critical violations exist
+  - Popup settings: mock mode toggle, backend URL, enabled, auto-scan, severity threshold
 - GitHub repo: `https://github.com/LakshyaKGupta/complylens-policy-checker`.
 - Current branch tracks `origin/main`.
-- Latest product commits after the original platform spine:
-  - `c9fb97f` `Add spec-kit workflow and richer compliance review flows`
-  - `fc0e910` `Simplify work UI and add extension install guide`
-  - `fe50eac` `Refine work chat UI and remove filler copy`
-  - `110cd10` `Fix work composer input flow`
+- Latest verified commit: `151c02f` — Fix admin reports and track ai system.
 - Latest IA/product direction:
-  - App is now intended to feel like an enterprise AI compliance operating system.
-  - Avoid returning to generic dashboard/card layouts.
-  - Keep all future UI changes workflow-centric: scan, find violation, reason, cite policy, rewrite, approve, audit, deploy.
-- Current `Work` tab behavior:
-  - Primary editable input is the main chat composer.
-  - Paperclip uploads file input from the same composer.
-  - `Run check` button and `Cmd/Ctrl+Enter` both trigger analysis.
-  - Lower card is now comparison/highlight view, not the primary writing surface.
+  - App is an enterprise AI compliance operating system.
+  - Avoid generic dashboard/card layouts.
+  - Keep all future UI workflow-centric: scan → find violation → reason → cite policy → rewrite → approve → audit → deploy.
 - Web app screenshot artifacts from verification:
   - `/Users/lol/Docs/antigravity/capgmeini/complylens-web-final.png`
   - `/Users/lol/Docs/antigravity/capgmeini/complylens-web-mobile.png`
