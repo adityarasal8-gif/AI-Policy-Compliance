@@ -82,9 +82,33 @@ function findComposeEditors() {
     });
 }
 
-function findComposeDialog(editor: HTMLElement) {
-  return editor.closest<HTMLElement>('[role="dialog"]') ?? editor.parentElement ?? editor;
+function findComposeDialog(editor: HTMLElement): HTMLElement {
+  // Try progressively wider Gmail compose container selectors
+  const selectors = [
+    '[role="dialog"]',
+    '.nH.Hd[class]',   // Gmail compose window wrapper
+    '.aaZ',            // Gmail compose outer shell
+    '.AD',             // Gmail compose window in some versions
+    '.M9',             // Another Gmail compose class
+  ];
+  for (const sel of selectors) {
+    const el = editor.closest<HTMLElement>(sel);
+    if (el && el.offsetWidth > 200 && el.offsetHeight > 200) return el;
+  }
+  // Walk up to find the largest ancestor that looks like the compose window
+  let el: HTMLElement | null = editor.parentElement;
+  let best: HTMLElement = editor;
+  let depth = 0;
+  while (el && depth < 12) {
+    if (el.offsetWidth > 300 && el.offsetHeight > 300 && el.offsetWidth < window.innerWidth * 0.8) {
+      best = el;
+    }
+    el = el.parentElement;
+    depth++;
+  }
+  return best;
 }
+
 
 function createSession(editor: HTMLElement, dialog: HTMLElement): ComposeSession {
   const id = `complylens-${crypto.randomUUID()}`;
@@ -128,58 +152,65 @@ function createSession(editor: HTMLElement, dialog: HTMLElement): ComposeSession
 }
 
 function positionSessionUi(session: ComposeSession) {
-  // Use the compose dialog rect for stable anchoring (the editor itself scrolls)
   const dialogRect = session.dialog.getBoundingClientRect();
 
-  // ── Shield button: sits in the bottom-right corner of the compose window,
-  //    overlapping its own border so it looks like a Grammarly-style badge.
+  // ── Shield button: bottom-right corner of the compose window toolbar area
   const btnSize = 32;
-  const btnRight = dialogRect.right - btnSize - 10;   // 10px from right edge
-  const btnTop   = dialogRect.bottom - btnSize - 10;  // 10px up from bottom edge
-
   Object.assign(session.button.style, {
-    left:   `${Math.max(0, btnRight)}px`,
-    top:    `${Math.max(0, btnTop)}px`,
+    left:   `${Math.max(0, dialogRect.right - btnSize - 12)}px`,
+    top:    `${Math.max(0, dialogRect.bottom - btnSize - 12)}px`,
     width:  `${btnSize}px`,
     height: `${btnSize}px`
   });
 
-  // ── Side panel: prefer left of dialog; fall back to right if not enough room.
-  const panelWidth  = Math.min(360, window.innerWidth - 28);
-  const panelTop    = Math.max(10, dialogRect.top);
-  const spaceLeft   = dialogRect.left - 16;
-  const spaceRight  = window.innerWidth - dialogRect.right - 16;
+  // ── Panel: always opens ABOVE the compose window, aligned to its right edge.
+  //    This avoids any overlap with the compose content regardless of viewport width.
+  const panelWidth = Math.min(360, window.innerWidth - 28);
 
-  if (spaceLeft >= panelWidth) {
-    // Open to the LEFT of compose
+  // Space above the compose window
+  const spaceAbove = dialogRect.top - 16;
+  // Space to the left of the compose window  
+  const spaceLeft = dialogRect.left - 16;
+
+  if (spaceLeft >= panelWidth + 8) {
+    // ── Prefer: open to the LEFT of the compose window
+    const panelRight = window.innerWidth - dialogRect.left + 8;
+    const panelTop   = Math.max(10, dialogRect.top);
+    const panelMaxH  = Math.min(560, window.innerHeight - panelTop - 20);
     Object.assign(session.panel.style, {
-      right:  `${window.innerWidth - dialogRect.left + 8}px`,
-      left:   "auto",
-      top:    `${panelTop}px`,
-      bottom: "auto",
-      width:  `${panelWidth}px`
+      right:     `${panelRight}px`,
+      left:      "auto",
+      top:       `${panelTop}px`,
+      bottom:    "auto",
+      width:     `${panelWidth}px`,
+      maxHeight: `${panelMaxH}px`
     });
-  } else if (spaceRight >= panelWidth) {
-    // Open to the RIGHT of compose
+  } else if (spaceAbove >= 200) {
+    // ── Fallback: open ABOVE the compose window, right-aligned to it
+    const panelRight  = Math.max(10, window.innerWidth - dialogRect.right);
+    const panelBottom = window.innerHeight - dialogRect.top + 8;
+    const panelMaxH   = Math.min(560, spaceAbove - 16);
     Object.assign(session.panel.style, {
-      left:   `${dialogRect.right + 8}px`,
-      right:  "auto",
-      top:    `${panelTop}px`,
-      bottom: "auto",
-      width:  `${panelWidth}px`
+      right:     `${panelRight}px`,
+      left:      "auto",
+      top:       "auto",
+      bottom:    `${panelBottom}px`,
+      width:     `${panelWidth}px`,
+      maxHeight: `${panelMaxH}px`
     });
   } else {
-    // Not enough room on either side — float above compose, full-width-capped
-    const panelBottom = window.innerHeight - dialogRect.top + 8;
+    // ── Last resort: fixed center-left overlay that doesn't cover compose
     Object.assign(session.panel.style, {
-      right:  `${Math.max(10, window.innerWidth - dialogRect.right)}px`,
-      left:   "auto",
-      top:    "auto",
-      bottom: `${panelBottom}px`,
-      width:  `${panelWidth}px`
+      left:      "16px",
+      right:     "auto",
+      top:       "80px",
+      bottom:    "auto",
+      width:     `${panelWidth}px`,
+      maxHeight: "560px"
     });
   }
 }
+
 
 async function runScan(session: ComposeSession) {
   const text = getEditorText(session.editor);
