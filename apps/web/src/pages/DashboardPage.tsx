@@ -8,6 +8,7 @@ import {
 } from "@complylens/shared";
 import { analyzeDocument, analyzeUploadedDocument, getHealth, listAuditEvents, listEmployees, listPolicyVersions } from "../api/complianceApi";
 import { HighlightedEditor } from "../features/compliance/HighlightedEditor";
+import { useAuth } from "../auth/useAuth";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import type { Notice } from "../types";
 
@@ -24,7 +25,8 @@ const emptyReport: ComplianceReport = {
 const departments = ["All", "Legal", "Sales", "HR", "Security", "Finance"];
 
 export function DashboardPage() {
-  const role = typeof window !== "undefined" && window.localStorage.getItem("complylens-role") === "admin" ? "admin" : "employee";
+  const { profile } = useAuth();
+  const role = profile?.role ?? "employee";
   const [draft, setDraft] = useState("");
   const [originalText, setOriginalText] = useState("");
   const [documentName, setDocumentName] = useState("No file selected");

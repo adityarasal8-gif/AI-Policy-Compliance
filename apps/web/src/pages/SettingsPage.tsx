@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { BarChart3, Bell, CheckCircle2, Gauge, KeyRound, Palette, Puzzle, RefreshCw, ShieldCheck, SlidersHorizontal, UserPlus, UsersRound } from "lucide-react";
+import { useAuth } from "../auth/useAuth";
 import { inviteEmployee, listEmployees, saveCompanySettings, updateEmployeeStatus } from "../api/complianceApi";
 import { NoticeBox } from "../components/common/NoticeBox";
 import { PanelTitle } from "../components/common/PanelTitle";
@@ -43,7 +44,8 @@ function loadPersonalization(): Personalization {
 }
 
 export function SettingsPage() {
-  const role = typeof window !== "undefined" && window.localStorage.getItem("complylens-role") === "admin" ? "admin" : "employee";
+  const { profile } = useAuth();
+  const role = profile?.role ?? "employee";
   const [notice, setNotice] = useState<Notice>(null);
   const [saving, setSaving] = useState(false);
   const [personalization, setPersonalization] = useState<Personalization>(() => loadPersonalization());
@@ -73,7 +75,7 @@ export function SettingsPage() {
     setSaving(true);
     try {
       await saveCompanySettings({
-        organizationId: "demo-org",
+        organizationId: profile?.workspaceId ?? "demo-org",
         organizationName: String(form.get("organizationName") ?? "Demo Enterprise"),
         threshold: Number(form.get("threshold") ?? 0.62),
         activePolicySet: String(form.get("activePolicySet") ?? "seeded-enterprise-policy")
@@ -130,11 +132,11 @@ export function SettingsPage() {
       <PanelTitle label={role === "admin" ? "Organization" : "Profile"} title={role === "admin" ? "Company profile" : "Employee account"} />
       <label>
         {role === "admin" ? "Organization name" : "Name"}
-        <input defaultValue={role === "admin" ? "Demo Enterprise" : "Employee User"} name="organizationName" />
+        <input defaultValue={profile?.workspaceName ?? (role === "admin" ? "Workspace" : "Employee User")} name="organizationName" />
       </label>
       <label>
         Work email
-        <input defaultValue={role === "admin" ? "admin@demo-enterprise.com" : "employee@demo-enterprise.com"} name="email" />
+        <input defaultValue={profile?.email ?? "employee@company.com"} name="email" />
       </label>
       {role === "admin" && (
         <>

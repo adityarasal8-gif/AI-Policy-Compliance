@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useAuth } from "./auth/useAuth";
 import { AuthPage } from "./pages/AuthPage";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -6,16 +7,26 @@ import { LandingPage } from "./pages/LandingPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
-function getRole() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("complylens-role");
-}
-
 function RequireRole({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
-  const role = getRole();
-  if (!role) return <Navigate replace to="/login" />;
-  if (adminOnly && role !== "admin") return <Navigate replace to="/dashboard" />;
-  return children;
+  const { loading, profile, user } = useAuth();
+
+  if (loading) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-layout">
+          <div className="auth-copy">
+            <span className="eyebrow">Secure policy workspace</span>
+            <h1>Checking your access.</h1>
+            <p>Loading your Firebase session and Firestore profile.</p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user || !profile) return <Navigate replace to="/login" />;
+  if (adminOnly && profile.role !== "admin") return <Navigate replace to="/dashboard" />;
+  return <>{children}</>;
 }
 
 export function App() {

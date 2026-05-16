@@ -8,6 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@complylens/shared": "0.1.0"
+    "@complylens/shared": "0.1.0",
+    "firebase": "^12.13.0"
   }
 }

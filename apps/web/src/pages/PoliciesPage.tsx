@@ -1,6 +1,7 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { Database, FileSearch, GitBranch, ShieldCheck, Upload } from "lucide-react";
 import { type PolicyReference } from "@complylens/shared";
+import { useAuth } from "../auth/useAuth";
 import { getHealth, listPolicyVersions, togglePolicyReference, uploadPolicyDocument } from "../api/complianceApi";
 import { NoticeBox } from "../components/common/NoticeBox";
 import { PanelTitle } from "../components/common/PanelTitle";
@@ -8,7 +9,8 @@ import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import type { Notice } from "../types";
 
 export function PoliciesPage() {
-  const role = typeof window !== "undefined" && window.localStorage.getItem("complylens-role") === "admin" ? "admin" : "employee";
+  const { profile } = useAuth();
+  const role = profile?.role ?? "employee";
   const [notice, setNotice] = useState<Notice>(null);
   const [uploading, setUploading] = useState(false);
   const [policyVersions, setPolicyVersions] = useState<PolicyReference[]>([]);

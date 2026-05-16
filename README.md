@@ -30,4 +30,10 @@ python3 -m pip install -r backend/requirements.txt
 python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
+Web auth setup:
+
+- Create a Firebase project with Email/Password auth enabled.
+- Set these env vars for `apps/web`: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, and `VITE_FIREBASE_APP_ID`.
+- The web app writes user profiles to `users/{uid}` and workspace records to `workspaces/{workspaceId}` in Firestore.
+
 The backend currently uses deterministic local policy retrieval and rule-based analysis so the product works without an external LLM key. Provider embeddings/LLM calls can be added behind the same API contract.

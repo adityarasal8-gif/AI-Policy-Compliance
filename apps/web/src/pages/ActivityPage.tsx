@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Bot, CheckCircle2, Download, FileText, GitBranch, MailCheck, ShieldCheck } from "lucide-react";
+import { useAuth } from "../auth/useAuth";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import { listAuditEvents, listSavedSessions, markAuditEventReviewed } from "../api/complianceApi";
@@ -9,7 +10,8 @@ type AuditEventRow = AuditEvent & { tone?: string };
 const departments = ["All", "Legal", "Sales", "HR", "Security", "Finance"];
 
 export function ActivityPage() {
-  const role = typeof window !== "undefined" && window.localStorage.getItem("complylens-role") === "admin" ? "admin" : "employee";
+  const { profile } = useAuth();
+  const role = profile?.role ?? "employee";
   const [filter, setFilter] = useState<"all" | "open" | "reviewed">("all");
   const [department, setDepartment] = useState("All");
   const [auditEvents, setAuditEvents] = useState<AuditEventRow[]>([]);

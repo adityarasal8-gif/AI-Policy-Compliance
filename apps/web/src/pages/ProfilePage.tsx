@@ -1,14 +1,16 @@
 import { Building2, Gauge, ShieldCheck, UserCircle } from "lucide-react";
+import { useAuth } from "../auth/useAuth";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
 
-const profileRows = [
-  ["Organization", "Demo Enterprise"],
-  ["Compliance model", "Seeded enterprise policy"],
-  ["Default threshold", "0.62"],
-  ["Review owner", "Legal Operations"]
-];
-
 export function ProfilePage() {
+  const { profile } = useAuth();
+  const profileRows = [
+    ["Organization", profile?.workspaceName ?? "Workspace"],
+    ["Compliance model", "Seeded enterprise policy"],
+    ["Default threshold", "0.62"],
+    ["Review owner", "Legal Operations"]
+  ];
+
   return (
     <WorkspaceShell>
       <section className="ops-dashboard workflow-page">
@@ -26,7 +28,7 @@ export function ProfilePage() {
         <div className="profile-grid">
           <section className="ops-card profile-card">
             <UserCircle size={22} />
-            <strong>Demo Enterprise</strong>
+            <strong>{profile?.workspaceName ?? "Workspace"}</strong>
             <p>Multi-team compliance workspace for legal, security, people, finance, and sales communication review.</p>
           </section>
           <section className="ops-card profile-table">

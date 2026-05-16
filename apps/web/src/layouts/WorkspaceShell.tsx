@@ -1,20 +1,12 @@
 import { Activity, Building2, FileText, Home, LogOut, Settings, Shield } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useAuth, type WorkspaceRole } from "../auth/AuthProvider";
 import { Brand } from "../components/common/Brand";
 
-type WorkspaceRole = "admin" | "employee";
 type WorkspacePersonalization = {
   accent?: "indigo" | "emerald" | "amber";
   density?: "comfortable" | "compact";
 };
-
-function getStoredRole(): WorkspaceRole {
-  if (typeof window === "undefined") {
-    return "employee";
-  }
-
-  return window.localStorage.getItem("complylens-role") === "admin" ? "admin" : "employee";
-}
 
 function getWorkspaceLinks(role: WorkspaceRole) {
   if (role === "admin") {
@@ -45,15 +37,17 @@ function getPersonalization(): WorkspacePersonalization {
   }
 }
 
-export function WorkspaceShell({ children, role = getStoredRole() }: { children: React.ReactNode; role?: WorkspaceRole }) {
+export function WorkspaceShell({ children, role }: { children: React.ReactNode; role?: WorkspaceRole }) {
   const navigate = useNavigate();
-  const workspaceLinks = getWorkspaceLinks(role);
+  const { profile, signOut } = useAuth();
+  const activeRole = role ?? profile?.role ?? "employee";
+  const workspaceLinks = getWorkspaceLinks(activeRole);
   const personalization = getPersonalization();
   const accent = personalization.accent ?? "indigo";
   const density = personalization.density ?? "comfortable";
 
-  function logout() {
-    window.localStorage.removeItem("complylens-role");
+  async function logout() {
+    await signOut();
     navigate("/login");
   }
 
@@ -75,8 +69,8 @@ export function WorkspaceShell({ children, role = getStoredRole() }: { children:
           <div className="workspace-org-card">
             <Building2 size={16} />
             <div>
-              <strong>Demo Enterprise</strong>
-              <span>{role === "admin" ? "Admin workspace" : "Employee workspace"}</span>
+              <strong>{profile?.workspaceName ?? "Workspace"}</strong>
+              <span>{activeRole === "admin" ? "Admin workspace" : "Employee workspace"}</span>
             </div>
           </div>
           <div className="workspace-quick-actions">
