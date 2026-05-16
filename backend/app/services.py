@@ -333,7 +333,7 @@ class ComplianceService:
                 ReportInsight(title="Extension adoption", value=f"{active_users}/{invited_users}", detail="Active employee accounts indicate extension rollout readiness and training coverage.", tone="success"),
             ]
             action_plan = [
-                ReportAction(label=f"Coach {top_department[0]}", owner="Compliance lead", priority="high" if top_department[1] else "medium", detail="Review the top flagged messages and publish simple allowed-language examples."),
+                ReportAction(label="Department coaching plan", owner="Compliance lead", priority="high" if top_department[1] else "medium", detail="Create approved-language examples for the highest-risk department and assign policy coaching."),
                 ReportAction(label=f"Refresh {top_policy[0]}", owner="Policy owner", priority="high" if top_policy[1] else "medium", detail="Upload the latest policy, compare version changes, then disable stale chunks."),
                 ReportAction(label="Clear reviewer queue", owner="Legal reviewer", priority="critical" if open_events > 5 else "medium", detail="Resolve open audit events and export evidence for critical scans."),
                 ReportAction(label="Deploy extension to remaining users", owner="IT admin", priority="medium", detail="Invite employees and verify extension activation before the next review window."),

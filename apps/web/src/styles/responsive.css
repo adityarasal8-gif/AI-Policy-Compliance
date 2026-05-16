@@ -58,8 +58,12 @@
     grid-template-columns: 1fr;
   }
   .report-evidence-strip,
-  .report-control-primary .report-status-list {
+  .report-control-primary .report-status-list,
+  .report-filter-row {
     grid-template-columns: 1fr;
+  }
+  .report-filter-row {
+    justify-content: stretch;
   }
   .codex-chat-head,
   .composer-meta,

@@ -53,17 +53,15 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
   const maxTrend = useMemo(() => Math.max(...summary.trend, 1), [summary.trend]);
   const metricByLabel = (label: string) => summary.metrics.find((metric) => metric.label === label);
   const insightByTitle = (title: string) => summary.executiveInsights.find((insight) => insight.title === title);
-  const primaryAction = summary.actionPlan[0];
-  const riskValue = metricByLabel("Risk value protected");
   const readiness = metricByLabel("Ready to send");
   const rewriteWork = metricByLabel("Fixes needed");
   const safety = metricByLabel("Writing safety");
   const topDepartment = insightByTitle("Top risky department");
-  const policyDrift = insightByTitle("Policy drift");
   const reviewerSla = insightByTitle("Reviewer SLA");
   const repeatPattern = insightByTitle("Repeated risky phrase");
   const improvement = insightByTitle("Plain-language improvement");
   const savedByAi = insightByTitle("Financial risk prevented") ?? insightByTitle("Ready to send");
+  const visibleMetrics = isAdmin ? summary.metrics.filter((metric) => metric.label !== "Risk value protected") : summary.metrics;
   const statusRows = isAdmin
     ? summary.departmentRisk.map((item) => ({ id: item.label, label: item.label, value: item.value, tone: item.tone, status: item.tone === "danger" ? "Coaching required" : "Monitor" }))
     : summary.recentSessions.map((session) => ({
@@ -89,7 +87,7 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
         </div>
 
         {isAdmin && (
-          <div className="audit-filter-row">
+          <div className="audit-filter-row report-filter-row">
             <BarChart3 size={16} />
             <span>Department</span>
             <select value={department} onChange={(event) => setDepartment(event.target.value)}>
@@ -98,18 +96,20 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </div>
         )}
 
-        <section className={`report-decision-banner ${isAdmin ? "admin" : "employee"}`}>
-          <div>
-            <span>{isAdmin ? "Executive recommendation" : "Before you send"}</span>
-            <h2>{isAdmin ? (primaryAction?.label ?? "Run more scans to generate recommendations") : `${readiness?.value ?? 0}${readiness?.suffix ?? "%"} ready-to-send rate`}</h2>
-            <p>{isAdmin ? (primaryAction?.detail ?? "ComplyLens will recommend coaching, policy updates, and review actions once more scans are saved.") : `${rewriteWork?.value ?? 0} rewrite items need attention. ${safety?.value ?? 0}% average writing safety across recent drafts.`}</p>
-          </div>
-          <strong>{isAdmin ? (riskValue ? `$${riskValue.value.toLocaleString()}` : "$0") : `${summary.evidenceExports.filter((item) => item.value === "Clean").length}/${summary.evidenceExports.length || 1}`}</strong>
-          <small>{isAdmin ? "estimated exposure avoided" : "recent drafts clean"}</small>
-        </section>
+        {!isAdmin && (
+          <section className="report-decision-banner employee">
+            <div>
+              <span>Before you send</span>
+              <h2>{readiness?.value ?? 0}{readiness?.suffix ?? "%"} ready-to-send rate</h2>
+              <p>{rewriteWork?.value ?? 0} rewrite items need attention. {safety?.value ?? 0}% average writing safety across recent drafts.</p>
+            </div>
+            <strong>{summary.evidenceExports.filter((item) => item.value === "Clean").length}/{summary.evidenceExports.length || 1}</strong>
+            <small>recent drafts clean</small>
+          </section>
+        )}
 
         <div className="report-evidence-strip">
-          {summary.metrics.map((metric) => (
+          {visibleMetrics.map((metric) => (
             <article className={`report-proof-pill tone-${metric.tone}`} key={metric.label}>
               <span>{metric.label}</span>
               <strong>{metric.suffix === "$" ? "$" : ""}{metric.value.toLocaleString()}{metric.suffix === "$" ? "" : metric.suffix}</strong>
@@ -137,7 +137,7 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
           </section>
 
           <section className="ops-card report-action-card">
-            <PanelTitle label={isAdmin ? "Executive recommendation engine" : "AI writing coaching"} title={isAdmin ? "Prioritized work queue" : "What to fix next"} />
+            <PanelTitle label={isAdmin ? "Operational action queue" : "AI writing coaching"} title={isAdmin ? "Prioritized work queue" : "What to fix next"} />
             <div className="report-action-list">
               {summary.actionPlan.map((item, index) => (
                 <article className={`report-action priority-${item.priority}`} key={`${item.label}-${item.owner}-${index}`}>

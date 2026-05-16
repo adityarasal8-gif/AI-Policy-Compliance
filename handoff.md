@@ -571,6 +571,44 @@
 ### Notes For Next Agent
 - Verification passed: `npm run typecheck`, `npm run build:web`, Browser checks for admin/employee Reports at desktop/mobile, and full route overflow audit across desktop/mobile.
 
+## Session Update - 2026-05-16
+### Objective
+- Run the website, remove the admin Reports executive recommendation/value block, fix admin report spacing/color issues, and track the local `ai-system` guidance files.
+
+### Completed
+- Confirmed web dev server is running at `http://127.0.0.1:5173/` and backend is running at `http://127.0.0.1:8000/`.
+- Removed the admin-only decision banner containing `Executive recommendation`, `Coach Sales`, and the exposed `$11,800 estimated exposure avoided` block.
+- Removed `Risk value protected` from visible admin report evidence chips.
+- Reworded admin action queue so it no longer displays `Coach Sales` or the flagged-message sentence.
+- Tightened admin report evidence chips to use readable white surfaces with colored text accents instead of low-contrast tinted cards.
+- Restored `ai-system/project_context.md` as ComplyLens-specific project context and prepared `ai-system` text files for tracking.
+
+### Files Modified
+- `apps/web/src/pages/AnalyticsPage.tsx`
+- `apps/web/src/styles/workspace.css`
+- `apps/web/src/styles/responsive.css`
+- `backend/app/services.py`
+- `ai-system/project_context.md`
+- `handoff.md`
+
+### Architecture Decisions
+- Keep `ai-system` guidance files tracked, but keep `.DS_Store` untracked/ignored because it is OS metadata.
+- Admin Reports no longer lead with a money-estimate hero block; decision/action sections and operational evidence are the primary surface.
+
+### Dependencies Added
+- None.
+
+### Issues Found
+- The prior removal only removed the hero section; the same content still appeared in admin evidence/action cards.
+- `ai-system/project_context.md` previously contained stale EV project context, which risked misleading future agents.
+
+### Pending Work
+- Add real report export actions and real rewrite/extension telemetry.
+- Consider replacing inferred financial-risk values entirely with configurable organization risk weights.
+
+### Notes For Next Agent
+- Verification passed: `python3 -m py_compile backend/app/*.py`, `npm run typecheck`, `npm run build:web`, Browser admin report forbidden-text check, and full desktop/mobile route overflow audit.
+
 ## Notes For Next Assistant
 - User wants this file updated after every chat/work session with current progress, completed work, and remaining tasks.
 - Use `/Users/lol/Downloads/29_Policy_Compliance_Checker.pdf` and `/Users/lol/Downloads/Policy_Compliance_Checker_Guide.docx` as source docs for this use case.
