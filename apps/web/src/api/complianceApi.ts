@@ -1,4 +1,41 @@
-import { API_BASE_URL, type AuditEvent, type ComplianceReport, type Employee, type HealthResponse, type PolicyReference, type RewriteResponse, type SavedSession } from "@complylens/shared";
+import {
+  type AuditEvent,
+  type ComplianceReport,
+  type Employee,
+  type HealthResponse,
+  type PolicyComparison,
+  type PolicyReference,
+  type ReportSummary,
+  type RewriteResponse,
+  type SavedSession
+} from "@complylens/shared";
+import { firebaseServices } from "../auth/firebase";
+
+const API_BASE_URL = "http://localhost:8000";
+
+async function getAuthHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers);
+  const token = await firebaseServices?.auth.currentUser?.getIdToken();
+
+  if (token) {
+    nextHeaders.set("Authorization", `Bearer ${token}`);
+  }
+
+  return nextHeaders;
+}
+
+async function requestJson<T>(path: string, init: RequestInit = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: await getAuthHeaders(init.headers)
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return (await response.json()) as T;
+}
 
 export async function analyzeDocument(input: {
   text: string;
@@ -7,19 +44,15 @@ export async function analyzeDocument(input: {
   department?: string;
   team?: string;
 }) {
-  const response = await fetch(`${API_BASE_URL}/analyze`, {
+  return requestJson<ComplianceReport>("/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as ComplianceReport;
 }
 
 export async function getHealth() {
-  const response = await fetch(`${API_BASE_URL}/health`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as HealthResponse;
+  return requestJson<HealthResponse>("/health");
 }
 
 export async function rewriteComplianceText(input: {
@@ -27,13 +60,11 @@ export async function rewriteComplianceText(input: {
   policyContext?: string;
   violationId?: string;
 }) {
-  const response = await fetch(`${API_BASE_URL}/rewrite`, {
+  return requestJson<RewriteResponse>("/rewrite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as RewriteResponse;
 }
 
 export async function analyzeUploadedDocument(file: File, threshold: number, department = "General", team = "Workspace") {
@@ -42,18 +73,14 @@ export async function analyzeUploadedDocument(file: File, threshold: number, dep
   body.append("threshold", String(threshold));
   body.append("department", department);
   body.append("team", team);
-  const response = await fetch(`${API_BASE_URL}/analyze-upload`, { method: "POST", body });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as { text: string; report: ComplianceReport };
+  return requestJson<{ text: string; report: ComplianceReport }>("/analyze-upload", { method: "POST", body });
 }
 
 export async function uploadPolicyDocument(file: File) {
   const body = new FormData();
   body.append("file", file);
   body.append("policy_name", file.name.replace(/\.(pdf|doc|docx|eml|html|htm|md|rtf|txt)$/i, ""));
-  const response = await fetch(`${API_BASE_URL}/upload-policy`, { method: "POST", body });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as { uploaded: boolean; chunks: number };
+  return requestJson<{ uploaded: boolean; chunks: number }>("/upload-policy", { method: "POST", body });
 }
 
 export async function saveCompanySettings(payload: {
@@ -62,19 +89,15 @@ export async function saveCompanySettings(payload: {
   threshold: number;
   activePolicySet: string;
 }) {
-  const response = await fetch(`${API_BASE_URL}/settings/company`, {
+  return requestJson("/settings/company", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!response.ok) throw new Error(await response.text());
-  return response.json();
 }
 
 export async function listEmployees() {
-  const response = await fetch(`${API_BASE_URL}/employees`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as Employee[];
+  return requestJson<Employee[]>("/employees");
 }
 
 export async function inviteEmployee(payload: {
@@ -82,52 +105,47 @@ export async function inviteEmployee(payload: {
   name: string;
   department: string;
   role: "employee" | "admin";
+  sendEmail?: boolean;
 }) {
-  const response = await fetch(`${API_BASE_URL}/employees`, {
+  return requestJson<Employee>("/employees", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as Employee;
 }
 
 export async function updateEmployeeStatus(employeeId: string, status: Employee["status"]) {
-  const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/status?status=${encodeURIComponent(status)}`, { method: "PATCH" });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as Employee;
+  return requestJson<Employee>(`/employees/${employeeId}/status?status=${encodeURIComponent(status)}`, { method: "PATCH" });
 }
 
 export async function listSavedSessions(department = "All") {
-  const response = await fetch(`${API_BASE_URL}/sessions?department=${encodeURIComponent(department)}`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as SavedSession[];
+  return requestJson<SavedSession[]>(`/sessions?department=${encodeURIComponent(department)}`);
 }
 
 export async function listAuditEvents(department = "All") {
-  const response = await fetch(`${API_BASE_URL}/audit-events?department=${encodeURIComponent(department)}`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as AuditEvent[];
+  return requestJson<AuditEvent[]>(`/audit-events?department=${encodeURIComponent(department)}`);
 }
 
 export async function markAuditEventReviewed(eventId: string) {
-  const response = await fetch(`${API_BASE_URL}/audit-events/${eventId}/reviewed`, { method: "PATCH" });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as AuditEvent;
+  return requestJson<AuditEvent>(`/audit-events/${eventId}/reviewed`, { method: "PATCH" });
 }
 
 export async function listPolicyVersions() {
-  const response = await fetch(`${API_BASE_URL}/policies`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as PolicyReference[];
+  return requestJson<PolicyReference[]>("/policies");
+}
+
+export async function comparePolicyVersions(policy: string) {
+  return requestJson<PolicyComparison>(`/policies/compare?policy=${encodeURIComponent(policy)}`);
+}
+
+export async function getReportSummary(role: "admin" | "employee", department = "All") {
+  return requestJson<ReportSummary>(`/reports/summary?role=${encodeURIComponent(role)}&department=${encodeURIComponent(department)}`);
 }
 
 export async function togglePolicyReference(referenceId: string, enabled: boolean) {
-  const response = await fetch(`${API_BASE_URL}/policies/${referenceId}`, {
+  return requestJson<PolicyReference>(`/policies/${referenceId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled })
   });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as PolicyReference;
 }

@@ -4,54 +4,61 @@
 
 import type { AnalyzeRequest, RewriteRequest } from "@complylens/shared";
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+async function readApiBaseUrl() {
+  return new Promise<string>((resolve) => {
+    chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
+      resolve(result.complylensApiBaseUrl || "http://127.0.0.1:8000");
+    });
+  });
+}
+
+async function proxyJson<TPayload>(path: string, payload: TPayload) {
+  const base = await readApiBaseUrl();
+  const response = await fetch(`${base}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await response.text();
+  try {
+    return { ok: response.ok, status: response.status, json: JSON.parse(text) };
+  } catch {
+    return { ok: response.ok, status: response.status, text };
+  }
+}
+
+async function handleBackendRequest<TPayload>(path: string, payload: TPayload) {
+  return proxyJson(path, payload);
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.get(["complylensExtensionSettings"], (result) => {
+    if (result.complylensExtensionSettings) return;
+    chrome.storage.local.set({
+      complylensExtensionSettings: {
+        enabled: true,
+        mockMode: true,
+        backendUrl: "http://127.0.0.1:8000",
+        autoScan: false,
+        severityThreshold: "medium"
+      }
+    });
+  });
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     try {
       if (message?.type === "analyze") {
         const payload: AnalyzeRequest = message.payload;
-        const base = (await new Promise<string>((resolve) => {
-          chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
-            resolve(result.complylensApiBaseUrl || "http://127.0.0.1:8000");
-          });
-        })) as string;
-
-        const res = await fetch(`${base}/analyze`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const text = await res.text();
-        try {
-          const json = JSON.parse(text);
-          sendResponse({ ok: res.ok, status: res.status, json });
-        } catch (err) {
-          sendResponse({ ok: res.ok, status: res.status, text });
-        }
+        sendResponse(await handleBackendRequest("/analyze", payload));
         return;
       }
 
       if (message?.type === "rewrite") {
         const payload: RewriteRequest = message.payload;
-        const base = (await new Promise<string>((resolve) => {
-          chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
-            resolve(result.complylensApiBaseUrl || "http://127.0.0.1:8000");
-          });
-        })) as string;
-
-        const res = await fetch(`${base}/rewrite`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const text = await res.text();
-        try {
-          const json = JSON.parse(text);
-          sendResponse({ ok: res.ok, status: res.status, json });
-        } catch (err) {
-          sendResponse({ ok: res.ok, status: res.status, text });
-        }
+        sendResponse(await handleBackendRequest("/rewrite", payload));
         return;
       }
 
@@ -60,5 +67,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: false, error: (error as Error).message });
     }
   })();
-  return true; // keep channel open for async response
+  return true;
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "complylens-backend") return;
+
+  port.onMessage.addListener((message) => {
+    (async () => {
+      try {
+        const requestId = message?.requestId;
+        if (message?.type === "analyze") {
+          const payload: AnalyzeRequest = message.payload;
+          port.postMessage({ requestId, ...(await handleBackendRequest("/analyze", payload)) });
+          return;
+        }
+
+        if (message?.type === "rewrite") {
+          const payload: RewriteRequest = message.payload;
+          port.postMessage({ requestId, ...(await handleBackendRequest("/rewrite", payload)) });
+          return;
+        }
+
+        port.postMessage({ requestId, ok: false, error: "unknown_message" });
+      } catch (error) {
+        port.postMessage({ requestId: message?.requestId, ok: false, error: (error as Error).message });
+      }
+    })();
+  });
 });

@@ -28,6 +28,7 @@ export type Violation = {
   quote: string;
   policyName: string;
   policySection: string;
+  violatedPolicy?: string | null;
   ruleText: string;
   explanation: string;
   rewrite: string;
@@ -86,7 +87,11 @@ export type Employee = {
   department: string;
   role: "employee" | "admin";
   status: "invited" | "active" | "disabled";
+  sendEmail?: boolean;
   invitedAt: string;
+  inviteLink?: string;
+  temporaryPassword?: string;
+  emailStatus?: "sent" | "dev_logged" | "failed";
 };
 
 export type SavedSession = {
@@ -110,4 +115,56 @@ export type AuditEvent = {
   time: string;
   department: string;
   eventType: "scan" | "rewrite" | "policy" | "extension" | "user";
+};
+
+export type ReportMetric = {
+  label: string;
+  value: number;
+  suffix: string;
+  delta: string;
+  tone: "success" | "warning" | "danger" | "neutral";
+};
+
+export type ReportBar = {
+  label: string;
+  value: number;
+  tone: "success" | "warning" | "danger" | "neutral";
+};
+
+export type ReportInsight = {
+  title: string;
+  detail: string;
+  value: string;
+  tone: "success" | "warning" | "danger" | "neutral";
+};
+
+export type ReportAction = {
+  label: string;
+  owner: string;
+  priority: "low" | "medium" | "high" | "critical";
+  detail: string;
+};
+
+export type ReportSummary = {
+  role: "admin" | "employee";
+  generatedAt: string;
+  metrics: ReportMetric[];
+  departmentRisk: ReportBar[];
+  policyViolations: ReportBar[];
+  trend: number[];
+  recentSessions: SavedSession[];
+  auditEvents: AuditEvent[];
+  executiveInsights: ReportInsight[];
+  actionPlan: ReportAction[];
+  evidenceExports: ReportInsight[];
+};
+
+export type PolicyComparison = {
+  policy: string;
+  latestVersion: number;
+  previousVersion?: number | null;
+  addedTerms: string[];
+  removedTerms: string[];
+  latestText: string;
+  previousText?: string | null;
 };

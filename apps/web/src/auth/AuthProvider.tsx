@@ -59,12 +59,21 @@ function toMessage(error: unknown) {
   return "Authentication failed. Please try again.";
 }
 
+function resolveWorkspaceRole(email: string | null | undefined, role: unknown): WorkspaceRole {
+  if (role === "admin" || role === "employee") {
+    return role;
+  }
+
+  return "employee";
+}
+
 function normalizeProfile(uid: string, data: Record<string, unknown>): WorkspaceProfile {
+  const email = String(data.email ?? "");
   return {
     uid,
-    email: String(data.email ?? ""),
+    email,
     displayName: String(data.displayName ?? data.email ?? "Workspace user"),
-    role: data.role === "admin" ? "admin" : "employee",
+    role: resolveWorkspaceRole(email, data.role),
     workspaceId: String(data.workspaceId ?? ""),
     workspaceName: String(data.workspaceName ?? "Workspace")
   };
@@ -75,7 +84,7 @@ function createProfileFromUser(user: User, workspaceId: string, workspaceName: s
     uid: user.uid,
     email: user.email ?? "",
     displayName: user.displayName ?? user.email?.split("@")[0] ?? "Workspace user",
-    role,
+    role: resolveWorkspaceRole(user.email, role),
     workspaceId,
     workspaceName
   };
@@ -273,7 +282,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         uid: credential.user.uid,
         email: credential.user.email ?? input.email,
         displayName: input.email.split("@")[0] || "Workspace user",
-        role: input.role,
+        role: resolveWorkspaceRole(credential.user.email ?? input.email, input.role),
         workspaceId: workspaceRef.id,
         workspaceName
       };
@@ -285,7 +294,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       batch.set(workspaceRef, {
         name: workspaceName,
         ownerUid: credential.user.uid,
-        ownerRole: input.role,
+        ownerRole: nextProfile.role,
         createdAt: serverTimestamp()
       });
       batch.set(doc(db, "users", credential.user.uid), {

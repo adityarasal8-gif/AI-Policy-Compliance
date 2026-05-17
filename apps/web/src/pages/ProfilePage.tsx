@@ -42,7 +42,7 @@ export function ProfilePage() {
           <section className="ops-card profile-card">
             <Gauge size={22} />
             <strong>Retrieval configuration</strong>
-            <p>Policy chunks are ranked locally for the demo backend. Production should connect this profile to a real vector store and reviewer identity model.</p>
+            <p>Policy chunks are retrieved using a vector store for accurate policy matching.</p>
           </section>
         </div>
       </section>

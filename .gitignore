@@ -2,6 +2,12 @@ node_modules
 dist
 .env
 .env.local
+<<<<<<< HEAD
+=======
+.DS_Store
+backend/data/*.json
+backend/data/*.db
+>>>>>>> cc4a2d28ad555ec4f53f9e1e903face4f4b53934
 *.log
 *.png
 *.tsbuildinfo

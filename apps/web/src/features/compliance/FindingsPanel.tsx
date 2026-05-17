@@ -102,6 +102,10 @@ export function FindingsPanel({
       {activeViolation && (
         <motion.section animate={{ opacity: 1, y: 0 }} className="assistant-card" initial={{ opacity: 0, y: 8 }} key={activeViolation.id}>
           <PanelTitle label="Selected issue" title={activeViolation.policyName} />
+          <div className="violation-policy-line">
+            <strong>Violated policy</strong>
+            <span>{activeViolation.violatedPolicy ?? `${activeViolation.policyName}, ${activeViolation.policySection}`}</span>
+          </div>
           <p>{activeViolation.explanation}</p>
           <blockquote>{activeViolation.quote}</blockquote>
           <div className="citation-box">

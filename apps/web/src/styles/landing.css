@@ -103,7 +103,7 @@
 .hero-eyebrow,
 .section-icon,
 .hero-proof-strip span,
-.demo-signal-list span,
+.preview-signal-list span,
 .floating-token,
 .workflow-visual span,
 .gmail-policy-card {
@@ -298,7 +298,7 @@
   margin-bottom: 34px;
 }
 .section-heading h2,
-.extension-demo-section h2,
+.extension-preview-section h2,
 .final-cta-section h2 {
   margin: 0;
   font-size: clamp(2.25rem, 4.5vw, 4.65rem);
@@ -306,7 +306,7 @@
   letter-spacing: -0.045em;
 }
 .section-heading p,
-.extension-demo-section p,
+.extension-preview-section p,
 .final-cta-section p {
   max-width: 660px;
   margin: 18px 0 0;
@@ -469,20 +469,20 @@
   background: linear-gradient(90deg, rgba(79, 70, 229, 0.18), rgba(79, 70, 229, 0.8), rgba(16, 185, 129, 0.18));
 }
 
-.extension-demo-section {
+.extension-preview-section {
   grid-template-columns: minmax(0, 1fr) 430px;
   gap: 42px;
   align-items: center;
 }
 
-.demo-signal-list {
+.preview-signal-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 22px;
 }
 
-.demo-signal-list span {
+.preview-signal-list span {
   min-height: 38px;
   padding: 0 12px;
   border: 1px solid var(--line);

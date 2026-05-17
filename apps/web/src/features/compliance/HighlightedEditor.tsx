@@ -1,5 +1,9 @@
 import type { Violation } from "@complylens/shared";
 
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function HighlightedEditor({
   draft,
   onSelectViolation,
@@ -31,20 +35,61 @@ export function HighlightedEditor({
         <span>{mode === "preview" ? "Original text with highlights" : "Comparison"}</span>
         <div className="highlight-preview">
           {draft.split(/\n\s*\n/).map((paragraph, index) => {
-            const match = violations.find((violation) => paragraph.includes(violation.quote));
-            if (!match) return <p key={`${index}-${paragraph}`}>{paragraph}</p>;
-            const [before, after] = paragraph.split(match.quote);
+            const paragraphViolations = violations.filter((v) => 
+              v.quote.trim() && paragraph.toLowerCase().includes(v.quote.toLowerCase())
+            );
+
+            if (!paragraphViolations.length) {
+              return <p key={`${index}-${paragraph.slice(0, 20)}`}>{paragraph}</p>;
+            }
+
+            const sortedViolations = [...paragraphViolations].sort((a, b) => b.quote.length - a.quote.length);
+            
+            type Chunk = { text: string; violation?: Violation };
+            let chunks: Chunk[] = [{ text: paragraph }];
+
+            for (const violation of sortedViolations) {
+              const newChunks: Chunk[] = [];
+              const regex = new RegExp(`(${escapeRegExp(violation.quote)})`, "gi");
+              
+              for (const chunk of chunks) {
+                if (chunk.violation) {
+                  newChunks.push(chunk);
+                  continue;
+                }
+                
+                const parts = chunk.text.split(regex);
+                if (parts.length === 1) {
+                  newChunks.push(chunk);
+                } else {
+                  parts.forEach((part, i) => {
+                    if (i % 2 === 1) {
+                      newChunks.push({ text: part, violation });
+                    } else if (part) {
+                      newChunks.push({ text: part });
+                    }
+                  });
+                }
+              }
+              chunks = newChunks;
+            }
+
             return (
-              <p key={`${index}-${paragraph}`}>
-                {before}
-                <button
-                  className={`inline-flag inline-flag--${match.severity}`}
-                  onClick={() => onSelectViolation(match.id)}
-                  type="button"
-                >
-                  {match.quote}
-                </button>
-                {after}
+              <p key={`${index}-${paragraph.slice(0, 20)}`}>
+                {chunks.map((chunk, i) => 
+                  chunk.violation ? (
+                    <button
+                      key={i}
+                      className={`inline-flag inline-flag--${chunk.violation.severity}`}
+                      onClick={() => onSelectViolation(chunk.violation!.id)}
+                      type="button"
+                    >
+                      {chunk.text}
+                    </button>
+                  ) : (
+                    <span key={i}>{chunk.text}</span>
+                  )
+                )}
               </p>
             );
           })}

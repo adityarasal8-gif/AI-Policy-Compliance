@@ -18,7 +18,7 @@ export function ViolationCard({ violation, active, onSelect }: Props) {
         <span className="confidence">{Math.round(violation.confidence * 100)}%</span>
       </div>
       <strong>{violation.policyName}</strong>
-      <span>{violation.policySection}</span>
+      <span>{violation.violatedPolicy ?? `${violation.policyName}, ${violation.policySection}`}</span>
       <p>{violation.explanation}</p>
       <div className="rewrite-preview">
         <ClipboardCheck size={15} />

@@ -36,7 +36,9 @@ app = FastAPI(title="ComplyLens API", version="0.2.1")
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    data_path = Path(__file__).resolve().parents[1] / "data" / "state.json"
+    data_dir = Path(__file__).resolve().parents[1] / "data"
+    data_path = data_dir / "state.sqlite3"
+    legacy_json_path = data_dir / "state.json"
     app.state.service = ComplianceService(data_path)
     logger.info("ComplianceService initialized; policy_chunks=%d", app.state.service.policy_chunk_count)
 
@@ -47,18 +49,9 @@ def get_service(request: Request) -> ComplianceService:
         raise HTTPException(status_code=500, detail="Service not initialized")
     return service
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-    ],
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1):\d+$|^chrome-extension://.*$",
+    allow_origins=["http://localhost:5173", "http://localhost:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,6 +123,14 @@ def policies(service: ComplianceService = Depends(get_service)):
     return service.list_policy_versions()
 
 
+@app.get("/policies/compare")
+def compare_policy(policy: str, service: ComplianceService = Depends(get_service)):
+    try:
+        return service.compare_policy_versions(policy)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.patch("/policies/{reference_id}")
 def toggle_policy(reference_id: str, payload: PolicyToggle, service: ComplianceService = Depends(get_service)):
     try:
@@ -166,6 +167,11 @@ def sessions(department: str | None = None, service: ComplianceService = Depends
 @app.get("/audit-events")
 def audit_events(department: str | None = None, service: ComplianceService = Depends(get_service)):
     return service.list_audit_events(department)
+
+
+@app.get("/reports/summary")
+def reports_summary(role: str = "admin", department: str | None = None, service: ComplianceService = Depends(get_service)):
+    return service.report_summary(role=role, department=department)
 
 
 @app.patch("/audit-events/{event_id}/reviewed")

@@ -31,7 +31,7 @@ export function TopNav({ compact = false }: { compact?: boolean }) {
         <nav>
           <a href="#features"><Sparkles size={14} /> Features</a>
           <Link to="/extension">Extension</Link>
-          <a href="#demo">Demo</a>
+          <a href="#preview">Preview</a>
         </nav>
       )}
       <div className="site-nav-actions">

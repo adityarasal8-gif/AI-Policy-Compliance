@@ -154,7 +154,6 @@ function Popup() {
 
   function beginDrag(event: React.PointerEvent<HTMLElement>) {
     if (event.button !== 0) return;
-    const target = event.currentTarget.getBoundingClientRect();
     dragState.current = {
       startX: event.clientX,
       startY: event.clientY,
@@ -226,9 +225,9 @@ function Popup() {
     >
       <header onPointerDown={beginDrag}>
         <div className="mark">
-          <Shield size={18} />
+          <Shield size={17} />
         </div>
-        <div>
+        <div className="header-text">
           <h1>ComplyLens</h1>
           <p>Live Gmail compliance check</p>
         </div>
@@ -244,61 +243,63 @@ function Popup() {
         <div className="risk-score">
           <span>{report ? `${report.score}%` : "--"}</span>
         </div>
-        <div>
-          <span>Risk Score</span>
+        <div className="risk-info">
+          <span>Compliance Score</span>
           <strong>{report ? (report.status === "blocked" ? "Needs review" : "Ready") : "Waiting for Gmail"}</strong>
           <p>{report ? `${report.flaggedSections} policy risks detected.` : "Open a Gmail draft and refresh to load the live compose text."}</p>
         </div>
       </section>
 
-      <section className="extension-config">
-        <label>
-          <span><KeyRound size={14} /> Backend URL</span>
-          <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
-        </label>
-        <button className={connected ? "config-button connected" : "config-button"} disabled={loading} onClick={() => void testConnection()} type="button">
-          {connected ? "Connected" : "Test"}
-        </button>
-      </section>
-
-      <section className="popup-live-draft">
-        <div className="popup-live-draft__head">
-          <strong>Live Gmail draft</strong>
-          <button className="config-button" disabled={loading} onClick={() => void syncFromGmail(true)} type="button">
-            {loading ? "Loading..." : "Refresh from Gmail"}
+      <div className="popup-body">
+        <section className="extension-config">
+          <label>
+            <span><KeyRound size={13} /> Backend URL</span>
+            <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
+          </label>
+          <button className={connected ? "config-button connected" : "config-button"} disabled={loading} onClick={() => void testConnection()} type="button">
+            {connected ? "✓ Live" : "Test"}
           </button>
-        </div>
-        <div className="popup-live-draft__field">
-          <span>Subject</span>
-          <p>{snapshot.subject || "No subject detected"}</p>
-        </div>
-        <div className="popup-live-draft__field">
-          <span>Body</span>
-          <p>{snapshot.body || "No Gmail compose body detected yet."}</p>
-        </div>
-      </section>
-
-      {notice && <div className="popup-notice">{notice}</div>}
-
-      {firstViolation ? (
-        <motion.section animate={{ opacity: 1, y: 0 }} className="flag" initial={{ opacity: 0, y: 6 }}>
-          <div className="flag-title">
-            <AlertTriangle size={16} />
-            <strong>{firstViolation.policySection}</strong>
-          </div>
-          <p>{firstViolation.explanation}</p>
-          <div className="rewrite">
-            <Wand2 size={15} />
-            <span>{firstViolation.rewrite}</span>
-          </div>
-          <button disabled={loading} onClick={() => void applyRewriteInGmail()} type="button">Apply rewrite in Gmail</button>
-        </motion.section>
-      ) : (
-        <section className="clean">
-          <CheckCircle2 size={18} />
-          <span>{report ? "No violations found in the live Gmail draft." : "Open Gmail and compose a message to start scanning."}</span>
         </section>
-      )}
+
+        <section className="popup-live-draft">
+          <div className="popup-live-draft__head">
+            <strong>Live Gmail draft</strong>
+            <button className="config-button" disabled={loading} onClick={() => void syncFromGmail(true)} type="button">
+              {loading ? "Loading..." : "Refresh from Gmail"}
+            </button>
+          </div>
+          <div className="popup-live-draft__field">
+            <span>Subject</span>
+            <p>{snapshot.subject || "No subject detected"}</p>
+          </div>
+          <div className="popup-live-draft__field">
+            <span>Body</span>
+            <p>{snapshot.body || "No Gmail compose body detected yet."}</p>
+          </div>
+        </section>
+
+        {notice && <div className="popup-notice">{notice}</div>}
+
+        {firstViolation ? (
+          <motion.section animate={{ opacity: 1, y: 0 }} className="flag" initial={{ opacity: 0, y: 6 }}>
+            <div className="flag-title">
+              <AlertTriangle size={16} />
+              <strong>{firstViolation.policySection}</strong>
+            </div>
+            <p>{firstViolation.explanation}</p>
+            <div className="rewrite">
+              <Wand2 size={15} />
+              <span>{firstViolation.rewrite}</span>
+            </div>
+            <button disabled={loading} onClick={() => void applyRewriteInGmail()} type="button">Apply rewrite in Gmail</button>
+          </motion.section>
+        ) : (
+          <section className="clean">
+            <CheckCircle2 size={18} />
+            <span>{report ? "No violations found in the live Gmail draft." : "Open Gmail and compose a message to start scanning."}</span>
+          </section>
+        )}
+      </div>
 
       <footer>
         <MailCheck size={15} />

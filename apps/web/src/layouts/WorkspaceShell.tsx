@@ -1,4 +1,4 @@
-import { Activity, Building2, FileText, Home, LogOut, Settings, Shield } from "lucide-react";
+import { Activity, BarChart3, Building2, FileText, Home, LogOut, Settings, Shield } from "lucide-react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth, type WorkspaceRole } from "../auth/AuthProvider";
 import { Brand } from "../components/common/Brand";
@@ -13,6 +13,7 @@ function getWorkspaceLinks(role: WorkspaceRole) {
     return [
       { to: "/dashboard", label: "Workspace", icon: FileText },
       { to: "/policies", label: "Policies", icon: Shield },
+      { to: "/admin/reports", label: "Reports", icon: BarChart3 },
       { to: "/audit", label: "Audit Trail", icon: Activity },
       { to: "/settings", label: "Admin", icon: Settings }
     ];
@@ -20,7 +21,8 @@ function getWorkspaceLinks(role: WorkspaceRole) {
 
   return [
     { to: "/dashboard", label: "Workspace", icon: FileText },
-    { to: "/audit", label: "History", icon: Activity },
+    { to: "/employee/reports", label: "Reports", icon: BarChart3 },
+    { to: "/history", label: "History", icon: Activity },
     { to: "/settings", label: "Settings", icon: Settings }
   ];
 }

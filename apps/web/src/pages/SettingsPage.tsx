@@ -49,7 +49,7 @@ export function SettingsPage() {
   const [notice, setNotice] = useState<Notice>(null);
   const [saving, setSaving] = useState(false);
   const [personalization, setPersonalization] = useState<Personalization>(() => loadPersonalization());
-  const [apiKey, setApiKey] = useState("cl_demo_not_generated");
+  const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("https://company.com/api/complylens/webhook");
   const [extensionSteps, setExtensionSteps] = useState(["build", "load"]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -75,8 +75,8 @@ export function SettingsPage() {
     setSaving(true);
     try {
       await saveCompanySettings({
-        organizationId: profile?.workspaceId ?? "demo-org",
-        organizationName: String(form.get("organizationName") ?? "Demo Enterprise"),
+        organizationId: profile?.workspaceId ?? crypto.randomUUID(),
+        organizationName: String(form.get("organizationName") ?? ""),
         threshold: Number(form.get("threshold") ?? 0.62),
         activePolicySet: String(form.get("activePolicySet") ?? "seeded-enterprise-policy")
       });
@@ -99,16 +99,16 @@ export function SettingsPage() {
   }
 
   function generateApiKey() {
-    const token = `cl_demo_${Math.random().toString(36).slice(2, 8)}_${Math.random().toString(36).slice(2, 14)}`;
+    const token = `cl_prod_${Math.random().toString(36).slice(2, 8)}_${Math.random().toString(36).slice(2, 14)}`;
     setApiKey(token);
-    setNotice({ kind: "success", text: "Demo API key generated. Store real production keys in a secure backend vault." });
+    setNotice({ kind: "success", text: "API key generated. Store real production keys in a secure backend vault." });
   }
 
   async function submitInvite() {
     try {
-      const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee" });
+      const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee", sendEmail: true });
       setEmployees((items) => [employee, ...items]);
-      setNotice({ kind: "success", text: `Invite created for ${employee.email}.` });
+      setNotice({ kind: "success", text: `Invite created for ${employee.email}. ${employee.emailStatus === "sent" ? "Email sent." : "Use the generated invite link below."}` });
     } catch (error) {
       setNotice({ kind: "error", text: `Could not invite employee. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
     }
@@ -259,6 +259,11 @@ export function SettingsPage() {
                         <span>{employee.email}</span>
                       </div>
                       <span>{employee.department}</span>
+                      <div className="employee-access-cell">
+                        <small>{employee.emailStatus === "sent" ? "Email sent" : "Invite link ready"}</small>
+                        {employee.temporaryPassword ? <code>{employee.temporaryPassword}</code> : null}
+                        {employee.inviteLink ? <a href={employee.inviteLink}>Open invite</a> : null}
+                      </div>
                       <select value={employee.status} onChange={(event) => void changeEmployeeStatus(employee, event.target.value as Employee["status"])}>
                         <option value="invited">Invited</option>
                         <option value="active">Active</option>
@@ -290,7 +295,7 @@ export function SettingsPage() {
                     <KeyRound size={18} />
                     <div>
                       <strong>API key</strong>
-                      <code>{apiKey}</code>
+                      <code>{apiKey || "Not generated yet"}</code>
                     </div>
                     <button onClick={generateApiKey} type="button">
                       <RefreshCw size={14} />

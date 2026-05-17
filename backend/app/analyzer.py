@@ -7,6 +7,7 @@ import os
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
 
 from .models import ComplianceReport, PolicyReference, Severity, Violation
 from .policy_store import PolicyStore
@@ -19,7 +20,7 @@ PATTERNS = [
         "keywords": ("customer", "account id", "account ids", "contact details", "email", "vendor", "export"),
         "policy_hint": "Customer Data Handling Standard",
         "explanation": "The draft appears to share customer identifiers or personal data through an unapproved external channel.",
-        "rewrite": "Please share the approved secure transfer link with the vendor after access is authorized.",
+        "rewrite": "The customer export has been shared through the approved secure transfer workflow once access is authorized.",
     },
     {
         "id": "legal-commitment",
@@ -35,7 +36,7 @@ PATTERNS = [
         "keywords": ("salary", "bonus", "compensation", "lpa", "payroll"),
         "policy_hint": "HR Confidentiality Handbook",
         "explanation": "The draft exposes employee compensation details in written communication.",
-        "rewrite": "Please review compensation information only through the approved HR system.",
+        "rewrite": "Compensation information is available only through the approved HR system.",
     },
     {
         "id": "forecast",
@@ -43,7 +44,7 @@ PATTERNS = [
         "keywords": ("future revenue", "profit", "market performance", "forecast", "growth target"),
         "policy_hint": "Forward-Looking Statements Guide",
         "explanation": "The draft discusses future financial performance without the approved finance disclaimer.",
-        "rewrite": "Please add the approved finance disclaimer before discussing forward-looking performance.",
+        "rewrite": "Forward-looking statements include the approved finance disclaimer before discussing future performance.",
     },
 ]
 
@@ -69,19 +70,19 @@ def rewrite_text_for_compliance(text: str, policy_context: str | None = None) ->
         return ""
 
     if any(token in lowered for token in SENSITIVE_WORDS):
-        return "Please remove the sensitive information and share it only through an approved secure channel."
+        return "The sensitive information has been removed and should be shared only through an approved secure channel."
 
     if any(term in lowered for term in ("customer", "account", "contact details", "email", "vendor", "export")):
-        return "Please use the approved secure transfer workflow once the recipient is authorized."
+        return "The customer information has been moved to the approved secure transfer workflow once the recipient is authorized."
 
     if any(term in lowered for term in ("salary", "bonus", "compensation", "lpa", "payroll")):
-        return "Please review compensation information only through the approved HR system."
+        return "Compensation information is available only through the approved HR system."
 
     if any(term in lowered for term in ("promise", "guarantee", "refund", "delivery", "commit", "sla")):
         return "Our current target is subject to final confirmation and approved commercial terms."
 
     if any(term in lowered for term in ("future revenue", "profit", "market performance", "forecast", "growth target")):
-        return "Please add the approved finance disclaimer before discussing forward-looking performance."
+        return "Forward-looking statements include the approved finance disclaimer before discussing future performance."
 
     if context:
         # Prefer producing a concrete, grammatical rewrite rather than echoing policy text.
@@ -111,19 +112,38 @@ def rewrite_text_for_compliance(text: str, policy_context: str | None = None) ->
         if hedged.strip() and hedged.strip() != text.strip():
             return hedged.strip()
 
-        # As a last resort, provide a short, actionable rewrite that preserves grammar
-        return f"Please rephrase this sentence to comply with the referenced policy ({context[:80]})."
+        # As a last resort, provide a neutral replacement sentence instead of an instruction.
+        return f"This sentence has been revised to comply with the referenced policy ({context[:80]})."
 
-    return f"Rewritten for compliance: {text.strip()}"
+    return f"This message has been revised for compliance: {text.strip()}"
 
 
 class LLMViolation(BaseModel):
     model_config = {"extra": "ignore"}
 
-    flagged_text: str = ""
-    policy_reference: str = "Policy context"
-    explanation: str = ""
-    suggested_rewrite: str = ""
+    flagged_text: str = Field(
+        default="",
+        description="Exact text from the user's message that triggered the compliance issue.",
+    )
+    violated_policy: str | None = Field(
+        default=None,
+        description=(
+            "The exact company policy document and section or clause violated, for example 'IT Security Policy v2, Section 4.1'. "
+            "Return null when there is no violation or when the exact policy cannot be named from the provided context."
+        ),
+    )
+    explanation: str = Field(
+        default="",
+        description="Short, direct explanation of why the text violates the policy.",
+    )
+    suggested_rewrite: str = Field(
+        default="",
+        description=(
+            "A direct, drop-in replacement for the original text written from the user's first-person perspective. "
+            "It must be ready to send immediately and contain no explanations, meta-commentary, or instructions. "
+            "Example: if the original text is 'Send me your password', the rewrite should be 'Please share the necessary credentials via our secure enterprise password manager.'"
+        ),
+    )
 
 
 class LLMComplianceResult(BaseModel):
@@ -169,19 +189,32 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
         format_instructions = parser.get_format_instructions()
         
         policy_context = "\n\n---\n\n".join(contexts) if contexts else "(no policy context available)"
-        system_prompt = (
-            "You are a strict, zero-tolerance Compliance Officer for a regulated enterprise. "
-            "Your job is to identify any language that could expose sensitive data, create legal or financial commitments, "
-            "or otherwise violate company policy. Treat single sensitive tokens as violations even if embedded in long text. "
-            "Do NOT hallucinate policy text; only flag violations that are clearly supported by the user input or provided policy context. "
-            "When in doubt, prefer flagging and provide a concise rationale and suggested rewrite that removes or neutralizes the risky content. "
-            "Return strictly valid JSON in the format requested and never include additional prose outside the JSON."
-        )
-        user_prompt = (
-            f"Analyze for compliance violations:\n{text}\n\n"
-            f"Policy Context:\n{policy_context}\n\n"
-            f"{format_instructions}"
-        )
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "You are a strict compliance ghostwriter, not a teacher. "
+                "Your job is to detect policy violations and produce a usable rewrite the user can send immediately. "
+                "For every violation, populate violated_policy with the exact company policy document and section or clause violated, such as 'IT Security Policy v2, Section 4.1'. "
+                "If no exact policy can be named from the provided context, set violated_policy to null. "
+                "The suggested_rewrite field must be a direct, drop-in replacement written from the user's first-person perspective. "
+                "It must be ready to send immediately and must not contain explanations, meta-commentary, warnings, or instructions about what to do. "
+                "If the original text is 'Send me your password', a valid rewrite would be 'Please share the necessary credentials via our secure enterprise password manager.' "
+                "Never produce text like 'Remove the sensitive token...' or 'Please consider...' in suggested_rewrite. "
+                "Do not invent policies, do not explain your reasoning, and return only valid JSON that matches the schema."
+            ),
+            (
+                "human",
+                "Analyze the following text for compliance violations:\n{text}\n\n"
+                "Policy context:\n{policy_context}\n\n"
+                "Rules:\n"
+                "- violated_policy must name the exact violated policy document and section/clause or be null if no exact match exists.\n"
+                "- suggested_rewrite must be a direct, drop-in replacement for the original text.\n"
+                "- suggested_rewrite must be written from the user's first-person perspective and be ready to send immediately.\n"
+                "- suggested_rewrite must NOT contain explanations, meta-commentary, warnings, teaching language, or instructions about what to do.\n"
+                "- suggested_rewrite should sound like the user is sending a safe, compliant message now, not describing how to fix the message.\n\n"
+                "{format_instructions}"
+            ),
+        ])
         
         llm = ChatGroq(
             groq_api_key=llm_api_key,
@@ -190,7 +223,7 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
             max_tokens=int(os.getenv("GROQ_MAX_TOKENS", "1024")),
         )
         
-        response = llm.invoke(system_prompt + "\n\n" + user_prompt)
+        response = llm.invoke(prompt.format_messages(text=text, policy_context=policy_context, format_instructions=format_instructions))
         raw_text = response.content if hasattr(response, "content") else str(response)
 
         try:
@@ -205,7 +238,16 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
         violations: list[Violation] = []
         if parsed.violations:
             for v in parsed.violations:
-                ref = best_reference(references, v.policy_reference)
+                ref = best_reference(references, v.policy_reference) if hasattr(v, "policy_reference") else best_reference(references, v.violated_policy or "")
+                
+                rewrite = v.suggested_rewrite.strip()
+                # Remove common prefixes LLMs like to add despite instructions
+                rewrite = re.sub(r"^(Here is the (rewritten text|suggested rewrite|rewrite):?|Suggested rewrite:?|Rewrite:?|Revised text:?)\s*", "", rewrite, flags=re.IGNORECASE)
+                # Remove quotes if they wrap the entire string
+                if rewrite.startswith('"') and rewrite.endswith('"'):
+                    rewrite = rewrite[1:-1].strip()
+                v.suggested_rewrite = rewrite
+                
                 violations.append(
                     Violation(
                         id=f"llm-{uuid.uuid4().hex[:8]}",
@@ -214,6 +256,7 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
                         quote=v.flagged_text,
                         policyName=ref.policy,
                         policySection=ref.section,
+                        violatedPolicy=v.violated_policy or f"{ref.policy}, {ref.section}",
                         ruleText=ref.text,
                         explanation=v.explanation,
                         rewrite=v.suggested_rewrite,
@@ -266,6 +309,46 @@ def severity_for_reference(reference: PolicyReference) -> Severity:
     return "high" if any(marker in marker_text for marker in high_markers) else "medium"
 
 
+def _generate_safe_rewrite(sentence: str, pattern_keywords: list[str] | tuple[str, ...] | None = None) -> str:
+    s = sentence
+    # Redact emails
+    s = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "[redacted email]", s)
+    # Redact digits
+    s = re.sub(r"\b\d{4,}\b", "[redacted id]", s)
+    # Redact urls
+    s = re.sub(r"https?://\S+", "[redacted link]", s)
+    
+    # Soften language
+    s = re.sub(r"\bwe will\b", "we expect to", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bI will\b", "I plan to", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bwill\b", "may", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bguarantees\b", "expects", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bguaranteed\b", "expected", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bguarantee\b", "expect", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bpromises\b", "targets", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bpromised\b", "targeted", s, flags=re.IGNORECASE)
+    s = re.sub(r"\bpromise\b", "target", s, flags=re.IGNORECASE)
+    
+    # Redact sensitive words
+    for word in SENSITIVE_WORDS:
+        s = re.sub(rf"\b{re.escape(word)}\b", "[redacted]", s, flags=re.IGNORECASE)
+        
+    if pattern_keywords:
+        for kw in pattern_keywords:
+            replacement = "[redacted]"
+            if kw in ("salary", "bonus", "compensation", "lpa", "payroll"):
+                replacement = "[confidential]"
+            elif kw in ("future revenue", "profit", "market performance", "forecast", "growth target"):
+                replacement = "[financials]"
+            elif kw in ("customer", "account id", "account ids", "contact details", "email", "vendor", "export"):
+                replacement = "[customer data]"
+            s = re.sub(rf"\b{re.escape(kw)}\b", replacement, s, flags=re.IGNORECASE)
+            
+    if s.strip() == sentence.strip():
+        return f"[Please revise: {sentence}]"
+    return s
+
+
 def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> ComplianceReport:
     sentences = split_sentences(text)
     violations: list[Violation] = []
@@ -286,9 +369,10 @@ def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> Comp
                     quote=quote,
                     policyName=reference.policy,
                     policySection=reference.section,
+                    violatedPolicy=f"{reference.policy}, {reference.section}",
                     ruleText=reference.text,
                     explanation=f"Sensitive data or secret token detected: '{token}'. Do not share secrets in messages.",
-                    rewrite="Remove the sensitive token and use secure channels for secret exchange.",
+                    rewrite=_generate_safe_rewrite(quote),
                     citation=reference,
                 )
             )
@@ -340,9 +424,10 @@ def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> Comp
                 quote=quote,
                 policyName=reference.policy,
                 policySection=reference.section,
+                    violatedPolicy=f"{reference.policy}, {reference.section}",
                 ruleText=reference.text,
                 explanation=pattern["explanation"],
-                rewrite=pattern["rewrite"],
+                rewrite=_generate_safe_rewrite(quote, pattern["keywords"]),
                 citation=reference,
             )
         )
@@ -368,11 +453,12 @@ def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> Comp
                 quote=sentence,
                 policyName=reference.policy,
                 policySection=reference.section,
+                    violatedPolicy=f"{reference.policy}, {reference.section}",
                 ruleText=reference.text,
                 explanation=(
                     f"This sentence appears to overlap with policy guidance in {reference.policy} ({reference.section})."
                 ),
-                rewrite="Please align this statement with the policy guidance or remove sensitive details.",
+                rewrite=_generate_safe_rewrite(sentence),
                 citation=reference,
             )
         )

@@ -77,7 +77,7 @@ export function LandingPage() {
               Start Scanning <ArrowRight size={16} />
             </Link>
             <Link className="secondary-action" to="/extension">
-              Watch Demo <MailCheck size={16} />
+              Watch Preview <MailCheck size={16} />
             </Link>
           </div>
         </motion.div>
@@ -168,7 +168,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section className="home-section extension-demo-section" id="demo">
+      <section className="home-section extension-preview-section" id="preview">
         <motion.div {...sectionReveal}>
           <span className="section-icon"><MailCheck size={18} /> Gmail extension</span>
           <h2>Gmail checks that feel native to the way teams already work.</h2>
@@ -176,7 +176,7 @@ export function LandingPage() {
             The extension scans compose text, cites the matched policy, and inserts a compliant rewrite without moving
             users into a separate review tool.
           </p>
-          <div className="demo-signal-list">
+          <div className="preview-signal-list">
             <span><Radar size={16} /> Compose scan</span>
             <span><ShieldCheck size={16} /> Policy citation</span>
             <span><Wand2 size={16} /> One-click rewrite</span>

@@ -49,11 +49,9 @@ export function ActivityPage() {
     try {
       const updated = await markAuditEventReviewed(id);
       setAuditEvents((events) => events.map((event) => event.id === id ? updated : event));
-      return;
     } catch {
-      // keep local demo behavior available when backend is offline
+      // Intentionally swallow error or show notice (removed offline fallback)
     }
-    setAuditEvents((events) => events.map((event) => event.id === id ? { ...event, status: "reviewed" } : event));
   }
 
   function exportAudit() {

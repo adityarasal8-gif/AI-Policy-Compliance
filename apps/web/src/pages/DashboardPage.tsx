@@ -197,27 +197,56 @@ export function DashboardPage() {
 
   function exportReportPdf() {
     if (!hasRun) return;
-    const pdf = [
-      "%PDF-1.4",
-      "1 0 obj<<>>endobj",
-      "2 0 obj<< /Length 520 >>stream",
-      `BT /F1 14 Tf 50 760 Td (ComplyLens Analysis Report) Tj 0 -24 Td (Document: ${documentName.slice(0, 70)}) Tj 0 -20 Td (Department: ${department} / ${team}) Tj 0 -20 Td (Score: ${report.score} | Findings: ${visibleViolations.length}) Tj 0 -24 Td (Summary: ${(report.summary ?? "No summary").slice(0, 110)}) Tj ET`,
-      "endstream endobj",
-      "3 0 obj<< /Type /Page /Parent 4 0 R /Contents 2 0 R /Resources<< /Font<< /F1<< /Type /Font /Subtype /Helvetica /BaseFont /Helvetica >> >> >> >>endobj",
-      "4 0 obj<< /Type /Pages /Kids[3 0 R] /Count 1 >>endobj",
-      "5 0 obj<< /Type /Catalog /Pages 4 0 R >>endobj",
-      "xref 0 6",
-      "0000000000 65535 f ",
-      "0000000009 00000 n ",
-      "0000000029 00000 n ",
-      "0000000600 00000 n ",
-      "0000000750 00000 n ",
-      "0000000810 00000 n ",
-      "trailer<< /Root 5 0 R /Size 6 >>",
-      "startxref",
-      "870",
-      "%%EOF"
+    const escapePdf = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+    const lines = [
+      "ComplyLens Analysis Report",
+      `Document: ${documentName}`,
+      `Department: ${department} / ${team}`,
+      `Score: ${report.score} | Findings: ${visibleViolations.length} | Status: ${report.status}`,
+      `Summary: ${report.summary ?? "No summary"}`,
+      "",
+      "Findings, citations, and rewrites:",
+      ...visibleViolations.flatMap((violation, index) => [
+        `${index + 1}. ${violation.policyName} - ${violation.policySection}`,
+        `Severity: ${violation.severity} | Confidence: ${Math.round(violation.confidence * 100)}%`,
+        `Original: ${violation.quote}`,
+        `Why: ${violation.explanation}`,
+        `Citation: ${violation.ruleText}`,
+        `Suggested rewrite: ${violation.rewrite}`,
+        ""
+      ])
+    ].flatMap((line) => {
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += 92) chunks.push(line.slice(index, index + 92));
+      return chunks.length ? chunks : [""];
+    }).slice(0, 38);
+    const stream = [
+      "BT",
+      "/F1 10 Tf",
+      "50 785 Td",
+      "14 TL",
+      ...lines.map((line) => `(${escapePdf(line)}) Tj T*`),
+      "ET"
     ].join("\n");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    ];
+    let pdf = "%PDF-1.4\n";
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xref = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach((offset) => {
+      pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+    });
+    pdf += `trailer\n<< /Root 1 0 R /Size ${objects.length + 1} >>\nstartxref\n${xref}\n%%EOF`;
     const url = URL.createObjectURL(new Blob([pdf], { type: "application/pdf" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -258,7 +287,7 @@ export function DashboardPage() {
               <KeyRound size={20} />
               <span>Integrations</span>
               <strong>API + Extension</strong>
-              <small>Generate demo API keys and configure extension/webhook setup.</small>
+              <small>Generate API keys and configure extension/webhook setup.</small>
             </Link>
             <Link className="admin-dashboard-card" to="/settings">
               <UsersRound size={20} />
@@ -346,7 +375,7 @@ export function DashboardPage() {
                   <UploadCloud size={34} />
                 </div>
                 <strong>{selectedFile ? selectedFile.name : "Drop a document here"}</strong>
-                <span>PDF, DOCX, DOC, EML, HTML, RTF, TXT, or pasted text</span>
+                <span>PDF, DOCX, DOC, and more</span>
                 <small>{dragActive ? "Release to attach this file" : selectedFile ? "File ready for analysis" : "Click the box or drag a file onto it"}</small>
               </div>
 
@@ -446,6 +475,10 @@ export function DashboardPage() {
                           <small>{Math.round(violation!.confidence * 100)}% confidence</small>
                         </div>
                         <h3>{violation!.policySection}</h3>
+                        <div className="violation-policy-line">
+                          <strong>Violated policy</strong>
+                          <span>{violation!.violatedPolicy ?? `${violation!.policyName}, ${violation!.policySection}`}</span>
+                        </div>
                         <p>{violation!.explanation}</p>
                         <div className="rewrite-box">
                           <strong>Suggested rewrite</strong>

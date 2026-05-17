@@ -93,7 +93,7 @@ a { color: inherit; }
 .secondary-action,
 .ghost,
 .auth-submit,
-.demo-button,
+.preview-button,
 .upload-card,
 .scan-state,
 .document-toolbar,
@@ -191,7 +191,7 @@ a { color: inherit; }
 
 .primary-action,
 .auth-submit,
-.demo-button {
+.preview-button {
   justify-content: center;
   gap: 9px;
   min-height: 42px;
@@ -209,7 +209,7 @@ a { color: inherit; }
   box-shadow: 0 16px 34px rgba(79, 70, 229, 0.22);
 }
 .secondary-action,
-.demo-button {
+.preview-button {
   gap: 8px;
   color: var(--text);
   border-color: var(--line-strong);
