@@ -1,21 +1,67 @@
 # ComplyLens Policy Compliance Checker
 
-Enterprise AI compliance copilot for scanning documents and Gmail drafts against company policy.
+ComplyLens is an enterprise policy-compliance copilot for scanning documents and Gmail drafts against company policy, explaining violations, and suggesting safer rewrites.
 
-Originally prototyped as the AI-Policy-Compliance-RAG project for the Capgemini Exceller AgenticAI Buildathon, focused on a modular RAG pipeline using LangChain, ChromaDB, and Groq LLM.
+This repository now keeps the project in one place: the main README below is the consolidated summary of the earlier project notes, handoff notes, and auth setup documentation.
 
-## Overview
+## What It Does
 
-ComplyLens combines a policy-aware retrieval pipeline with a SaaS dashboard and a Chrome extension. It is designed to surface policy violations, explain why they occur, and suggest safer rewrites while keeping the system usable without external LLM keys.
+- Scans pasted text, uploaded documents, and Gmail drafts for policy risks.
+- Highlights problematic language, cites policy references, and proposes rewrites.
+- Supports both web and extension workflows against the same backend API.
+- Works without an external LLM key using deterministic local retrieval and rule-based analysis.
 
-## Current Scope
+## Project Layout
 
-- `apps/web`: React/Vite routed SaaS UI with landing page, auth screens, dashboard, policies, extension, and settings.
-- `apps/extension`: Manifest V3 Chrome extension popup and Gmail content script that call the backend analysis API.
-- `packages/shared`: shared report types, seeded policy data, fallback checker, and rewrite utilities.
-- `backend`: FastAPI service for policy upload, document parsing, retrieval-backed analysis, rewrites, settings, and health checks.
+- `apps/web`: React + Vite + TypeScript dashboard, auth flow, policies, activity, settings, and admin views.
+- `apps/extension`: Manifest V3 Chrome extension popup plus Gmail content script and background worker.
+- `backend`: FastAPI service for analysis, rewrites, policy upload, sessions, audit events, and health checks.
+- `packages/shared`: shared types, config, and compliance helpers used by the web app and extension.
+- `data/policy_files`: policy text files used for local retrieval and testing.
 
-## Commands
+## Tech Stack
+
+- Frontend: React, Vite, TypeScript, React Router.
+- Extension: Chrome Extension Manifest V3, content script, background service worker.
+- Backend: Python, FastAPI, Pydantic, Uvicorn.
+- Auth: Firebase Authentication + Firestore user/workspace profiles.
+- Retrieval and parsing: local policy chunking/retrieval, document parsing for PDF/DOCX/HTML/MD/TXT and related formats.
+- Shared logic: TypeScript utilities for reports, rewrites, and API contracts.
+
+## Current Behavior
+
+- AuthProvider wraps the router so user state is available everywhere.
+- Unauthenticated users are redirected to `/auth`.
+- Authenticated users with no profile are signed out and shown a setup message.
+- Admin-only routes redirect non-admin users back to the dashboard.
+- Backend fetches use plain `fetch()` to `http://localhost:8000` and are not blocked by frontend auth.
+- The Chrome extension fetches through its own background worker and remains isolated from the web app auth flow.
+
+## Setup
+
+### Web app
+
+Create `apps/web/.env` with Firebase values:
+
+```env
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+```
+
+### Backend
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+pip install -r backend/requirements.txt
+python -m uvicorn backend.app.main:app --reload --port 8000
+```
+
+## Run
 
 ```bash
 npm install
@@ -23,17 +69,18 @@ npm run dev:web
 npm run build
 ```
 
-Backend:
+## Consolidated Notes
 
-```bash
-python3 -m pip install -r backend/requirements.txt
-python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
-```
+The following earlier markdown notes have been summarized here so the workspace stays easier to scan:
 
-Web auth setup:
+- `project_context.md`: project goals, architectural guidance, and operating principles.
+- `handoff.md`: development history, feature rollout notes, and product-direction updates.
+- `AUTH_INTEGRATION_AUDIT.md`: Firebase auth routing, protected routes, backend/extension isolation, and verification results.
+- `AUTH_SETUP_COMPLETE.md`: Firebase setup checklist, validation steps, and quick-start commands.
 
-- Create a Firebase project with Email/Password auth enabled.
-- Set these env vars for `apps/web`: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, and `VITE_FIREBASE_APP_ID`.
-- The web app writes user profiles to `users/{uid}` and workspace records to `workspaces/{workspaceId}` in Firestore.
+## Status
 
-The backend currently uses deterministic local policy retrieval and rule-based analysis so the product works without an external LLM key. Provider embeddings/LLM calls can be added behind the same API contract.
+- TypeScript typecheck passes.
+- Web build passes.
+- Extension build passes.
+- The backend works with deterministic local analysis and can be extended with provider LLMs behind the same API contract.

@@ -1,10 +1,18 @@
 # ComplyLens Backend
 
-This folder contains a FastAPI backend for the ComplyLens project.
+This directory contains the FastAPI backend used by the ComplyLens web app and Chrome extension.
 
-Quick start (from this directory):
+## What it provides
 
-1. Create a virtualenv and install requirements:
+- `GET /health` for readiness checks.
+- `POST /analyze` and `POST /analyze-upload` for compliance analysis.
+- `POST /rewrite` for safe rewrite suggestions.
+- `GET /policies`, `POST /upload-policy` for policy management.
+- `GET /sessions`, `GET /audit-events`, and related admin endpoints for activity tracking.
+
+## Setup
+
+Create a virtual environment and install dependencies:
 
 ```bash
 python -m venv .venv
@@ -12,13 +20,13 @@ source .venv/bin/activate  # or .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-2. Set environment variables (example in `.env`):
+Optional LLM configuration:
 
-```
+```env
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-3. Run the app (canonical module path):
+## Run
 
 From the repository root:
 
@@ -26,8 +34,14 @@ From the repository root:
 python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 
-If you prefer to run from within the `backend/` directory, point Uvicorn at the parent directory first:
+From inside `backend/`:
 
 ```bash
 python -m uvicorn --app-dir .. backend.app.main:app --reload --port 8000
 ```
+
+## Notes
+
+- The backend is designed to work without an external LLM key.
+- Deterministic local retrieval and rule-based analysis are the default behavior.
+- The root [README](../README.md) contains the consolidated project summary and auth setup notes.
