@@ -40,8 +40,7 @@
 }
 .auth-google {
   width: 100%;
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 10px;
   min-height: 48px;
@@ -51,22 +50,17 @@
   background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(241,245,249,.9));
   color: var(--text);
   box-shadow: 0 8px 24px rgba(15,23,42,.06);
+  white-space: nowrap;
 }
 .auth-google:hover {
   border-color: rgba(79,70,229,.26);
   transform: translateY(-1px);
 }
 .auth-google:disabled { opacity: .75; cursor: progress; transform: none; }
-.google-mark {
+.google-logo {
   width: 32px;
   height: 32px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #4285f4, #34a853 50%, #fbbc05 75%, #ea4335);
-  color: white;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  flex: 0 0 auto;
 }
 .auth-role-grid {
   display: grid;

@@ -169,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return undefined;
     }
-  }, []);
+  }, [auth, db, profile?.uid]);
 
   async function signIn(input: SignInInput) {
     if (!auth || !db) {

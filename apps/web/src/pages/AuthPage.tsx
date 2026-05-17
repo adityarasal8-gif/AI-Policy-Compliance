@@ -1,9 +1,21 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, KeyRound, LockKeyhole } from "lucide-react";
+import { AlertCircle, ArrowRight, KeyRound, LockKeyhole } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { firebaseReady } from "../auth/firebase";
 import { TopNav } from "../layouts/TopNav";
+
+function GoogleLogo() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="google-logo" focusable="false">
+      <path fill="#4285F4" d="M21.35 11.1H12v2.95h5.35c-.23 1.3-.97 2.4-2.1 3.14v2.62h3.4c1.99-1.83 3.14-4.53 3.14-7.71 0-.73-.07-1.43-.24-2z"/>
+      <path fill="#34A853" d="M12 22c2.7 0 4.97-.9 6.63-2.43l-3.4-2.62c-.93.63-2.1 1.01-3.23 1.01-2.48 0-4.58-1.68-5.34-3.94H2.15v2.47A10 10 0 0 0 12 22z"/>
+      <path fill="#FBBC05" d="M6.66 14.02c-.19-.57-.3-1.18-.3-1.82s.11-1.25.3-1.82V7.91H2.15A9.97 9.97 0 0 0 2 12c0 1.61.39 3.13 1.09 4.47l3.57-2.45z"/>
+      <path fill="#EA4335" d="M12 5.38c1.47 0 2.78.51 3.81 1.52l2.86-2.86A9.65 9.65 0 0 0 12 2a10 10 0 0 0-9.85 5.91l4.51 3.54C7.42 7.06 9.52 5.38 12 5.38z"/>
+    </svg>
+  );
+}
 
 export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const navigate = useNavigate();
@@ -13,6 +25,13 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
   const [role, setRole] = useState<"admin" | "employee">("employee");
   const [submitting, setSubmitting] = useState(false);
   const isSignup = mode === "signup";
+
+  // Show Firebase error if not configured
+  useEffect(() => {
+    if (!firebaseReady) {
+      setError("Firebase authentication is not configured. Contact your administrator.");
+    }
+  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -120,9 +139,17 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
               Password
               <input name="password" placeholder="minimum 6 characters" type="password" />
             </label>
-            {(error || authError) && <div className="notice error">{error || authError}</div>}
+            {(error || authError) && (
+              <div className="notice error">
+                <AlertCircle size={18} strokeWidth={2.5} />
+                <span>{error || authError}</span>
+                <button type="button" onClick={() => setError("")} aria-label="Close error">
+                  ✕
+                </button>
+              </div>
+            )}
             <button className="auth-google" disabled={submitting} type="button" onClick={handleGoogleAuth}>
-              <span className="google-mark">G</span>
+              <GoogleLogo />
               {submitting ? "Working..." : isSignup ? "Sign up with Google" : "Continue with Google"}
               <ArrowRight size={16} />
             </button>
@@ -138,7 +165,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" }) {
           </form>
           <p className="auth-switch">
             {isSignup ? "Already have access?" : "Need a workspace?"} {" "}
-            <Link to={isSignup ? "/login" : "/signup"}>{isSignup ? "Login" : "Sign up"}</Link>
+            <Link to={isSignup ? "/auth/login" : "/auth/signup"}>{isSignup ? "Login" : "Sign up"}</Link>
           </p>
         </motion.section>
       </section>
