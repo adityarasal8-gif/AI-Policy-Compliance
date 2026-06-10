@@ -4,6 +4,9 @@ import uuid
 import os
 import secrets
 import smtplib
+import re
+import mimetypes
+from urllib.parse import quote
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from email.message import EmailMessage
@@ -31,11 +34,41 @@ from .storage import SQLiteStateStore
 
 
 EMPLOYEE_STATUSES = {"invited", "active", "disabled"}
+EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+URL_PATTERN = re.compile(r"https?://\S+")
+DIGIT_PATTERN = re.compile(r"\b\d{4,}\b")
+
+
+def _redact_text(value: str) -> str:
+    value = EMAIL_PATTERN.sub("[redacted email]", value)
+    value = URL_PATTERN.sub("[redacted link]", value)
+    value = DIGIT_PATTERN.sub("[redacted id]", value)
+    return value
+
+
+def _sanitize_employee(employee: Employee) -> Employee:
+    return employee.model_copy(
+        update={
+            "email": _redact_text(employee.email),
+            "inviteLink": None,
+            "temporaryPassword": None,
+        }
+    )
+
+
+def _sanitize_report(report: ComplianceReport) -> ComplianceReport:
+    sanitized_violations = [
+        violation.model_copy(update={"quote": _redact_text(violation.quote), "rewrite": _redact_text(violation.rewrite)})
+        for violation in report.violations
+    ]
+    return report.model_copy(update={"violations": sanitized_violations})
 
 
 class ComplianceService:
     def __init__(self, data_path: Path) -> None:
         self.storage = SQLiteStateStore(data_path, legacy_json_path=data_path.with_name("state.json"))
+        self.upload_dir = data_path.with_name("policy_uploads")
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.policy_store = PolicyStore()
         saved_references = self.storage.load_references()
         if saved_references:
@@ -57,12 +90,14 @@ class ComplianceService:
         self.storage.save_settings(settings)
         return settings
 
-    def upload_policy(self, text: str, policy_name: str, section: str, owner: str) -> list[PolicyReference]:
+    def upload_policy(self, text: str, policy_name: str, section: str, owner: str, *, raw_bytes: bytes | None = None, original_filename: str | None = None) -> list[PolicyReference]:
         version = 1 + max(
             [reference.version for reference in self.policy_store.references if reference.policy == policy_name] or [0]
         )
-        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner, version=version)
+        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner, version=version, createdAt=self._now())
         self.storage.save_references(self.policy_store.references)
+        if raw_bytes is not None:
+            self._save_policy_file(policy_name, version, raw_bytes, original_filename)
         self.add_audit_event(
             title=f"Policy uploaded: {policy_name}",
             detail=f"{len(references)} policy chunks indexed for {owner} as version {version}.",
@@ -72,42 +107,50 @@ class ComplianceService:
         )
         return references
 
-    def analyze(self, payload: AnalyzeRequest) -> ComplianceReport:
+
+
+    def analyze(self, payload: AnalyzeRequest, employee_id: str | None = None) -> ComplianceReport:
         threshold = payload.threshold if payload.threshold is not None else self.settings.threshold
         default_threshold = CompanySettings().threshold
         if threshold == default_threshold and self.settings.threshold != default_threshold:
             threshold = self.settings.threshold
         report = analyze_text(payload.text, self.policy_store, threshold)
-        self.save_session(payload, report)
+        self.save_session(payload, report, employee_id=employee_id)
         return report
 
-    def save_session(self, payload: AnalyzeRequest, report: ComplianceReport) -> SavedSession:
+    def save_session(self, payload: AnalyzeRequest, report: ComplianceReport, employee_id: str | None = None) -> SavedSession:
+        stored_report = _sanitize_report(report)
         session = SavedSession(
             id=f"sess-{uuid.uuid4().hex[:10]}",
-            documentName=payload.documentName or "Untitled document",
+            employeeId=employee_id,
+            documentName=_redact_text(payload.documentName or "Untitled document"),
             department=payload.department,
             team=payload.team,
             score=report.score,
             flaggedSections=report.flaggedSections,
             status=report.status,
             createdAt=self._now(),
-            report=report,
+            report=stored_report,
         )
         self.sessions = [session, *self.sessions[:49]]
         self.storage.save_sessions(self.sessions)
         self.add_audit_event(
-            title=f"Document analyzed: {session.documentName}",
+            title="Document analyzed",
             detail=f"{report.flaggedSections} issues found, score {report.score}.",
             owner="ComplyLens",
             event_type="scan",
             department=payload.department,
+            employee_id=employee_id,
         )
         return session
 
-    def list_sessions(self, department: str | None = None) -> list[SavedSession]:
+    def list_sessions(self, department: str | None = None, employee_id: str | None = None) -> list[SavedSession]:
+        sessions = self.sessions
+        if employee_id:
+            sessions = [s for s in sessions if s.employeeId == employee_id]
         if not department or department == "All":
-            return self.sessions
-        return [session for session in self.sessions if session.department == department]
+            return sessions
+        return [session for session in sessions if session.department == department]
 
     def invite_employee(self, payload: EmployeeInvite) -> Employee:
         invite_token = secrets.token_urlsafe(18)
@@ -123,15 +166,15 @@ class ComplianceService:
             **payload.model_dump(),
         )
         self.employees = [employee, *self.employees]
-        self.storage.save_employees(self.employees)
+        self.storage.save_employees([_sanitize_employee(item) for item in self.employees])
         self.add_audit_event(
-            title=f"Employee invited: {employee.email}",
-            detail=f"{employee.role} access assigned to {employee.department}. Email status: {employee.emailStatus}.",
+            title="Employee invited",
+            detail=f"{employee.role} access assigned to {employee.department}. Email delivery status: {employee.emailStatus}.",
             owner="Admin",
             event_type="user",
             department=employee.department,
         )
-        return employee
+        return _sanitize_employee(employee)
 
     def _send_invite_email(self, payload: EmployeeInvite, invite_link: str, temporary_password: str) -> str:
         host = os.getenv("SMTP_HOST")
@@ -168,7 +211,7 @@ class ComplianceService:
             return "failed"
 
     def list_employees(self) -> list[Employee]:
-        return self.employees
+        return [_sanitize_employee(employee) for employee in self.employees]
 
     def update_employee_status(self, employee_id: str, status: str) -> Employee:
         if status not in EMPLOYEE_STATUSES:
@@ -177,12 +220,94 @@ class ComplianceService:
             if employee.id == employee_id:
                 updated = employee.model_copy(update={"status": status})
                 self.employees[index] = updated
-                self.storage.save_employees(self.employees)
-                return updated
+                self.storage.save_employees([_sanitize_employee(item) for item in self.employees])
+                return _sanitize_employee(updated)
         raise ValueError("Employee not found")
 
     def list_policy_versions(self) -> list[PolicyReference]:
-        return self.policy_store.references
+        # Group chunked references by uploaded policy so the UI can render one row per file.
+        grouped: dict[str, PolicyReference] = {}
+        for reference in self.policy_store.references:
+            existing = grouped.get(reference.policy)
+            if existing is None or (reference.version or 0) >= (existing.version or 0):
+                grouped[reference.policy] = reference.model_copy(update={"text": "", "score": None})
+        result = list(grouped.values())
+        result.sort(key=lambda ref: ref.createdAt or "", reverse=True)
+        return result
+
+    def delete_policy(self, policy: str) -> None:
+        self.policy_store._chunks = [chunk for chunk in self.policy_store._chunks if chunk.reference.policy != policy]
+        self.storage.save_references(self.policy_store.references)
+        self.add_audit_event(
+            title=f"Policy deleted: {policy}",
+            detail="Policy document and all chunks removed.",
+            owner="Admin",
+            event_type="policy",
+            department="Admin",
+        )
+
+    def get_policy_view(self, policy: str) -> dict[str, object]:
+        references = [reference for reference in self.policy_store.references if reference.policy == policy]
+        if not references:
+            raise ValueError("Policy not found")
+        latest_version = max(reference.version or 1 for reference in references)
+        latest_references = [reference for reference in references if (reference.version or 1) == latest_version]
+        file_info = self._policy_file_info(policy, latest_version)
+        return {
+            "policy": policy,
+            "section": latest_references[0].section,
+            "owner": latest_references[0].owner,
+            "version": latest_version,
+            "chunkCount": len(latest_references),
+            "text": "\n\n".join(reference.text for reference in latest_references).strip(),
+            "fileUrl": file_info["fileUrl"] if file_info else None,
+            "originalFilename": file_info["originalFilename"] if file_info else None,
+            "mimeType": file_info["mimeType"] if file_info else None,
+        }
+
+    def _policy_file_info(self, policy: str, version: int) -> dict[str, str] | None:
+        policy_dir = self.upload_dir / self._slug(policy) / f"v{version}"
+        if not policy_dir.exists():
+            return None
+        files = [path for path in policy_dir.iterdir() if path.is_file()]
+        if not files:
+            return None
+        file_path = max(files, key=lambda path: path.stat().st_mtime)
+        mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return {
+            "fileUrl": f"/policies/file?policy={quote(policy)}&version={version}",
+            "originalFilename": file_path.name,
+            "mimeType": mime_type,
+        }
+
+    def get_policy_file(self, policy: str, version: int | None = None) -> tuple[Path, str, str]:
+        references = [reference for reference in self.policy_store.references if reference.policy == policy]
+        if not references:
+            raise ValueError("Policy not found")
+        latest_version = version or max(reference.version or 1 for reference in references)
+        policy_dir = self.upload_dir / self._slug(policy) / f"v{latest_version}"
+        if not policy_dir.exists():
+            raise ValueError("Policy file not found")
+        files = [path for path in policy_dir.iterdir() if path.is_file()]
+        if not files:
+            raise ValueError("Policy file not found")
+        file_path = max(files, key=lambda path: path.stat().st_mtime)
+        mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        return file_path, file_path.name, mime_type
+
+    def _save_policy_file(self, policy: str, version: int, raw_bytes: bytes, original_filename: str | None) -> None:
+        policy_dir = self.upload_dir / self._slug(policy) / f"v{version}"
+        policy_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = self._safe_filename(original_filename or f"{self._slug(policy)}.bin")
+        file_path = policy_dir / safe_name
+        file_path.write_bytes(raw_bytes)
+
+    def _slug(self, value: str) -> str:
+        slug = re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+        return slug or "policy"
+
+    def _safe_filename(self, value: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9._-]+", "-", value).strip("-") or "policy-file"
 
     def compare_policy_versions(self, policy: str) -> PolicyComparison:
         versions = sorted(
@@ -229,11 +354,12 @@ class ComplianceService:
                 return updated
         raise ValueError("Policy reference not found")
 
-    def add_audit_event(self, title: str, detail: str, owner: str, event_type: str, department: str = "General") -> AuditEvent:
+    def add_audit_event(self, title: str, detail: str, owner: str, event_type: str, department: str = "General", employee_id: str | None = None) -> AuditEvent:
         event = AuditEvent(
             id=f"audit-{uuid.uuid4().hex[:10]}",
-            title=title,
-            detail=detail,
+            employeeId=employee_id,
+            title=_redact_text(title),
+            detail=_redact_text(detail),
             owner=owner,
             status="open",
             time=self._now(),
@@ -244,12 +370,15 @@ class ComplianceService:
         self.storage.save_audit_events(self.audit_events)
         return event
 
-    def list_audit_events(self, department: str | None = None) -> list[AuditEvent]:
+    def list_audit_events(self, department: str | None = None, employee_id: str | None = None) -> list[AuditEvent]:
         if not self.audit_events:
             return []
+        events = self.audit_events
+        if employee_id:
+            events = [e for e in events if e.employeeId == employee_id]
         if not department or department == "All":
-            return self.audit_events
-        return [event for event in self.audit_events if event.department == department]
+            return events
+        return [event for event in events if event.department == department]
 
     def mark_audit_reviewed(self, event_id: str) -> AuditEvent:
         for index, event in enumerate(self.audit_events):
@@ -260,9 +389,9 @@ class ComplianceService:
                 return updated
         raise ValueError("Audit event not found")
 
-    def report_summary(self, role: str = "admin", department: str | None = None) -> ReportSummary:
-        sessions = self.list_sessions(department if role == "employee" else department)
-        events = self.list_audit_events(department if department else None)
+    def report_summary(self, role: str = "admin", department: str | None = None, employee_id: str | None = None) -> ReportSummary:
+        sessions = self.list_sessions(department if role == "employee" else department, employee_id=employee_id if role == "employee" else None)
+        events = self.list_audit_events(department if department else None, employee_id=employee_id if role == "employee" else None)
         if role == "employee":
             events = [event for event in events if event.eventType in {"scan", "rewrite"}]
         total_checks = len(sessions)
@@ -345,22 +474,21 @@ class ComplianceService:
             ]
         else:
             needs_rewrite = [session for session in sessions if session.flaggedSections > 0]
-            latest_ready = next((session.documentName for session in sessions if session.flaggedSections == 0), "No clean draft yet")
             executive_insights = [
-                ReportInsight(title="Ready to send", value=str(clean_sessions), detail=f"Latest clean draft: {latest_ready}. Clean drafts do not need a review ticket.", tone="success"),
+                ReportInsight(title="Ready to send", value=str(clean_sessions), detail="Recent clean drafts are ready without exposing their original names in the summary.", tone="success"),
                 ReportInsight(title="Needs rewrite", value=str(len(needs_rewrite)), detail="Open these drafts, apply safe rewrites, and run analysis again before sending.", tone="warning" if needs_rewrite else "success"),
                 ReportInsight(title="Repeated risky phrase", value=risky_phrase[0], detail=f"Seen {risky_phrase[1]} times. Avoid this wording in future customer or HR communication.", tone="warning" if risky_phrase[1] else "neutral"),
                 ReportInsight(title="Plain-language improvement", value=f"{clean_rate}%", detail="This is the share of your checked drafts that were already safe enough to send.", tone="success" if clean_rate >= 70 else "warning"),
                 ReportInsight(title="Accepted rewrites", value=str(rewrite_candidates), detail="Use the suggested rewrites for these findings, then re-check the draft.", tone="neutral"),
             ]
             action_plan = [
-                ReportAction(label=session.documentName, owner="You", priority="high" if session.status == "blocked" else "medium", detail=f"{session.flaggedSections} findings. Rewrite before sending.")
+                ReportAction(label="Private draft", owner="You", priority="high" if session.status == "blocked" else "medium", detail=f"{session.flaggedSections} findings. Rewrite before sending.")
                 for session in needs_rewrite[:4]
             ] or [
                 ReportAction(label="No rewrite work", owner="You", priority="low", detail="Your recent drafts are clean. Keep checking customer, vendor, HR, and legal messages.")
             ]
             evidence_exports = [
-                ReportInsight(title=session.documentName, value="Clean" if session.flaggedSections == 0 else "Needs rewrite", detail=f"{session.score}% safety score. Export if a manager needs proof.", tone="success" if session.flaggedSections == 0 else "warning")
+                ReportInsight(title="Private draft", value="Clean" if session.flaggedSections == 0 else "Needs rewrite", detail=f"{session.score}% safety score. Export if a manager needs proof.", tone="success" if session.flaggedSections == 0 else "warning")
                 for session in sessions[:4]
             ]
         return ReportSummary(

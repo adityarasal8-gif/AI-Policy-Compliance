@@ -4,6 +4,7 @@ import { useAuth } from "../auth/useAuth";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
 import { listAuditEvents, listSavedSessions, markAuditEventReviewed } from "../api/complianceApi";
+import { maskSensitiveText, redactDocumentName } from "../lib/privacy";
 import type { AuditEvent, SavedSession } from "@complylens/shared";
 
 type AuditEventRow = AuditEvent & { tone?: string };
@@ -57,7 +58,7 @@ export function ActivityPage() {
   function exportAudit() {
     const csv = [
       "title,detail,owner,status,time",
-      ...visibleAuditEvents.map((event) => `"${event.title}","${event.detail}","${event.owner}","${event.status}","${event.time}"`)
+      ...visibleAuditEvents.map((event) => `"${maskSensitiveText(event.title)}","${maskSensitiveText(event.detail)}","${maskSensitiveText(event.owner)}","${event.status}","${event.time}"`)
     ].join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     const anchor = document.createElement("a");
@@ -90,7 +91,7 @@ export function ActivityPage() {
                   <article className="activity-item tone-good" key={session.id}>
                     <FileText size={16} />
                     <div>
-                      <strong>{session.documentName}</strong>
+                      <strong>{redactDocumentName(session.documentName)}</strong>
                       <span>{session.department} · {session.team} · score {session.score}</span>
                     </div>
                     <time>{new Date(session.createdAt).toLocaleDateString()}</time>

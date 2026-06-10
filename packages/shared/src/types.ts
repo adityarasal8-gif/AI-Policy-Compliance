@@ -19,6 +19,7 @@ export type PolicyReference = {
   score?: number;
   enabled?: boolean;
   version?: number;
+  createdAt?: string;
 };
 
 export type Violation = {
@@ -167,4 +168,16 @@ export type PolicyComparison = {
   removedTerms: string[];
   latestText: string;
   previousText?: string | null;
+};
+
+export type PolicyFileView = {
+  policy: string;
+  section: string;
+  owner: PolicyOwner;
+  version: number;
+  chunkCount: number;
+  text: string;
+  fileUrl?: string | null;
+  originalFilename?: string | null;
+  mimeType?: string | null;
 };

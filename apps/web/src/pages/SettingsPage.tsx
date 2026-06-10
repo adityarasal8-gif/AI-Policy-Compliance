@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { BarChart3, Bell, CheckCircle2, Gauge, KeyRound, Palette, Puzzle, RefreshCw, ShieldCheck, SlidersHorizontal, UserPlus, UsersRound } from "lucide-react";
 import { useAuth } from "../auth/useAuth";
-import { inviteEmployee, listEmployees, saveCompanySettings, updateEmployeeStatus } from "../api/complianceApi";
+import { inviteEmployee, listEmployees, saveCompanySettings, updateEmployeeStatus, getReportSummary } from "../api/complianceApi";
 import { NoticeBox } from "../components/common/NoticeBox";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
+import { maskEmail } from "../lib/privacy";
 import type { Notice } from "../types";
 import type { Employee } from "@complylens/shared";
 
@@ -54,11 +55,27 @@ export function SettingsPage() {
   const [extensionSteps, setExtensionSteps] = useState(["build", "load"]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [inviteEmail, setInviteEmail] = useState("employee@company.com");
+  const [adminMetrics, setAdminMetrics] = useState<typeof adminReports>(adminReports);
+  const [riskStopped, setRiskStopped] = useState<number>(0);
 
   useEffect(() => {
     if (role === "admin") {
       void refreshEmployees();
     }
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== "admin") return;
+    void (async () => {
+      try {
+        const summary = await getReportSummary("admin");
+        const blocked = summary.metrics.find((m) => m.label === "Blocked before send")?.value ?? 0;
+        setRiskStopped(blocked);
+        setAdminMetrics((items) => items.map((it) => it.label === "Risk stopped" ? { ...it, value: String(blocked) } : it));
+      } catch {
+        // leave defaults
+      }
+    })();
   }, [role]);
 
   async function refreshEmployees() {
@@ -108,7 +125,7 @@ export function SettingsPage() {
     try {
       const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee", sendEmail: true });
       setEmployees((items) => [employee, ...items]);
-      setNotice({ kind: "success", text: `Invite created for ${employee.email}. ${employee.emailStatus === "sent" ? "Email sent." : "Use the generated invite link below."}` });
+      setNotice({ kind: "success", text: `Invite created for ${maskEmail(employee.email)}. ${employee.emailStatus === "sent" ? "Email sent." : "Invitation stored securely."}` });
     } catch (error) {
       setNotice({ kind: "error", text: `Could not invite employee. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
     }
@@ -256,13 +273,12 @@ export function SettingsPage() {
                     <article key={employee.id}>
                       <div>
                         <strong>{employee.name}</strong>
-                        <span>{employee.email}</span>
+                        <span>{maskEmail(employee.email)}</span>
                       </div>
                       <span>{employee.department}</span>
                       <div className="employee-access-cell">
-                        <small>{employee.emailStatus === "sent" ? "Email sent" : "Invite link ready"}</small>
-                        {employee.temporaryPassword ? <code>{employee.temporaryPassword}</code> : null}
-                        {employee.inviteLink ? <a href={employee.inviteLink}>Open invite</a> : null}
+                        <small>{employee.emailStatus === "sent" ? "Email sent" : "Invitation created securely"}</small>
+                        <span>Invite details are not shown in the admin list.</span>
                       </div>
                       <select value={employee.status} onChange={(event) => void changeEmployeeStatus(employee, event.target.value as Employee["status"])}>
                         <option value="invited">Invited</option>
@@ -277,7 +293,7 @@ export function SettingsPage() {
               <section className="ops-card">
                 <PanelTitle label="Simple reports" title="Admin risk view" />
                 <div className="admin-report-grid">
-                  {adminReports.map((report) => (
+                  {adminMetrics.map((report) => (
                     <div key={report.label}>
                       <BarChart3 size={17} />
                       <span>{report.label}</span>

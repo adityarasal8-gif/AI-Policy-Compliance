@@ -42,7 +42,7 @@ function ProtectedRoute({ children, role, redirectTo }: { children: ReactNode; r
   }
 
   if (role && resolvedRole !== role) {
-    return <Navigate replace to={role === "admin" ? "/admin" : "/employee"} />;
+    return <Navigate replace to={resolvedRole === "admin" ? "/admin" : "/employee"} />;
   }
 
   if (redirectTo) {

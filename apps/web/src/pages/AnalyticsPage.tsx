@@ -5,6 +5,7 @@ import { useAuth } from "../auth/useAuth";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { getReportSummary } from "../api/complianceApi";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
+import { redactDocumentName } from "../lib/privacy";
 
 const departments = ["All", "Legal", "Sales", "HR", "Security", "Finance"];
 
@@ -67,7 +68,7 @@ function ReportsView({ role }: { role: "admin" | "employee" }) {
     ? summary.departmentRisk.map((item) => ({ id: item.label, label: item.label, value: item.value, tone: item.tone, status: item.tone === "danger" ? "Coaching required" : "Monitor" }))
     : summary.recentSessions.map((session) => ({
         id: session.id,
-        label: session.documentName,
+        label: redactDocumentName(session.documentName),
         value: Math.max(session.flaggedSections * 25, 8),
         tone: session.status === "blocked" ? "danger" as const : session.flaggedSections ? "warning" as const : "success" as const,
         status: session.status === "blocked" ? "Manager review" : session.flaggedSections ? "Needs rewrite" : "Clean"

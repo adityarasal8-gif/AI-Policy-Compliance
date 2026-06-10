@@ -48,7 +48,7 @@ function Popup() {
   const firstViolation: Violation | undefined = report?.violations[0];
 
   useEffect(() => {
-    chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
+    chrome.storage?.local?.get(["complylensApiBaseUrl"], (result) => {
       if (result.complylensApiBaseUrl) setApiBaseUrl(result.complylensApiBaseUrl);
     });
     chrome.storage?.local?.get(["complylens-popup-bounds"], (result) => {
@@ -116,8 +116,8 @@ function Popup() {
   }
 
   function saveApiBaseUrl(nextUrl = apiBaseUrl) {
-    chrome.storage?.sync?.set({ complylensApiBaseUrl: nextUrl });
-    setNotice("Extension backend URL saved.");
+    chrome.storage?.local?.set({ complylensApiBaseUrl: nextUrl });
+    setNotice("Extension backend URL saved locally on this device.");
   }
 
   async function testConnection() {
@@ -256,6 +256,7 @@ function Popup() {
             <span><KeyRound size={13} /> Backend URL</span>
             <input value={apiBaseUrl} onChange={(event) => setApiBaseUrl(event.target.value)} />
           </label>
+          <small className="extension-config-note">Stored locally on this device only.</small>
           <button className={connected ? "config-button connected" : "config-button"} disabled={loading} onClick={() => void testConnection()} type="button">
             {connected ? "✓ Live" : "Test"}
           </button>

@@ -9,7 +9,10 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import firebase_admin
+from firebase_admin import auth, credentials
 
 from .models import (
     AnalyzeRequest,
@@ -22,7 +25,7 @@ from .models import (
     RewriteResponse,
 )
 from .analyzer import rewrite_text_for_compliance
-from .parser import extract_text_from_upload
+from .parser import extract_text_from_bytes, extract_text_from_upload
 from .services import ComplianceService
 
 logger = logging.getLogger("complylens")
@@ -33,6 +36,16 @@ load_dotenv(env_path)
 
 app = FastAPI(title="ComplyLens API", version="0.2.1")
 
+try:
+    firebase_admin.get_app()
+except ValueError:
+    try:
+        firebase_admin.initialize_app()
+    except Exception as e:
+        logger.warning(f"Firebase default initialization failed: {e}")
+        firebase_admin.initialize_app(options={"projectId": "demo-complylens"})
+
+security = HTTPBearer(auto_error=False)
 
 @app.on_event("startup")
 async def startup_event() -> None:
@@ -49,9 +62,46 @@ def get_service(request: Request) -> ComplianceService:
         raise HTTPException(status_code=500, detail="Service not initialized")
     return service
 
+def get_current_user(cred: HTTPAuthorizationCredentials = Depends(security), service: ComplianceService = Depends(get_service)):
+    if not cred or not cred.credentials:
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    try:
+        decoded_token = auth.verify_id_token(cred.credentials)
+    except Exception as e:
+        logger.warning(f"Token verification failed: {e}")
+        # Fallback for local development when token is 'dev-token'
+        if cred.credentials == "dev-token-admin":
+            decoded_token = {"email": "admin@complylens.local", "uid": "dev-admin-id"}
+        elif cred.credentials == "dev-token-employee":
+            decoded_token = {"email": "employee@complylens.local", "uid": "dev-employee-id"}
+        else:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    
+    email = decoded_token.get("email")
+    for emp in service.employees:
+        if emp.email == email:
+            decoded_token["db_role"] = emp.role
+            decoded_token["db_id"] = emp.id
+            return decoded_token
+            
+    decoded_token["db_role"] = "employee"
+    return decoded_token
+
+def require_admin(user: dict = Depends(get_current_user)):
+    if user.get("db_role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5175"],
+    allow_origins=["http://localhost:5173", "http://localhost:5175", "chrome-extension://*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,13 +110,13 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    logger.warning("HTTPException: %s %s %s", request.method, request.url, exc.detail)
+    logger.warning("HTTPException: %s %s", request.method, request.url.path)
     return JSONResponse(status_code=exc.status_code, content={"error": "http_error", "detail": str(exc.detail)})
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    logger.warning("Validation error for request %s %s", request.method, request.url)
+    logger.warning("Validation error for request %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"error": "validation_error", "detail": exc.errors()},
@@ -75,7 +125,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("Unhandled error for request %s %s", request.method, request.url)
+    logger.exception("Unhandled error for request %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"error": "internal_error", "detail": "An unexpected error occurred."},
@@ -88,9 +138,9 @@ async def health(service: ComplianceService = Depends(get_service)) -> HealthRes
 
 
 @app.post("/settings/company", response_model=CompanySettings)
-async def update_company(payload: CompanySettings, service: ComplianceService = Depends(get_service)) -> CompanySettings:
+async def update_company(payload: CompanySettings, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)) -> CompanySettings:
     settings = service.update_settings(payload)
-    logger.info("updated company settings organization=%s threshold=%s", payload.organizationId, payload.threshold)
+    logger.info("updated company settings threshold=%s", payload.threshold)
     return settings
 
 
@@ -100,39 +150,78 @@ async def upload_policy(
     policy_name: str = Form("Uploaded Company Policy"),
     section: str = Form("Company policy"),
     owner: str = Form("Compliance"),
+    user: dict = Depends(require_admin),
     service: ComplianceService = Depends(get_service),
 ) -> dict[str, Any]:
     try:
-        text = await extract_text_from_upload(file)
+        raw_bytes = await file.read()
+        text = extract_text_from_bytes(raw_bytes, file.filename)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not text.strip():
         raise HTTPException(status_code=400, detail="Uploaded policy did not contain extractable text.")
 
-    references = service.upload_policy(text=text, policy_name=policy_name, section=section, owner=owner)
-    logger.info("uploaded policy file=%s chunks=%d", file.filename, len(references))
+    references = service.upload_policy(
+        text=text,
+        policy_name=policy_name,
+        section=section,
+        owner=owner,
+        raw_bytes=raw_bytes,
+        original_filename=file.filename,
+    )
+    logger.info("uploaded policy chunks=%d", len(references))
+    # Return only summary info to avoid exposing chunked references in the admin UI
     return {
         "uploaded": True,
         "chunks": len(references),
-        "references": [reference.model_dump() for reference in references],
+        "policy": policy_name,
+        "version": max([r.version for r in references]) if references else 1,
     }
 
 
 @app.get("/policies")
-def policies(service: ComplianceService = Depends(get_service)):
+def policies(user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     return service.list_policy_versions()
 
 
+@app.delete("/policies/{policy}")
+def delete_policy(policy: str, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
+    service.delete_policy(policy)
+    return {"deleted": True, "policy": policy}
+
+
 @app.get("/policies/compare")
-def compare_policy(policy: str, service: ComplianceService = Depends(get_service)):
+def compare_policy(policy: str, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     try:
         return service.compare_policy_versions(policy)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.get("/policies/view")
+def view_policy(policy: str, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
+    try:
+        return service.get_policy_view(policy)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/policies/file")
+def policy_file(policy: str, version: int | None = None, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
+    try:
+        file_path, filename, mime_type = service.get_policy_file(policy, version)
+        return FileResponse(
+            path=file_path,
+            media_type=mime_type,
+            filename=filename,
+            content_disposition_type="inline",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.patch("/policies/{reference_id}")
-def toggle_policy(reference_id: str, payload: PolicyToggle, service: ComplianceService = Depends(get_service)):
+def toggle_policy(reference_id: str, payload: PolicyToggle, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     try:
         return service.toggle_policy(reference_id, payload.enabled)
     except ValueError as exc:
@@ -140,17 +229,17 @@ def toggle_policy(reference_id: str, payload: PolicyToggle, service: ComplianceS
 
 
 @app.get("/employees")
-def employees(service: ComplianceService = Depends(get_service)):
+def employees(user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     return service.list_employees()
 
 
 @app.post("/employees")
-def invite_employee(payload: EmployeeInvite, service: ComplianceService = Depends(get_service)):
+def invite_employee(payload: EmployeeInvite, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     return service.invite_employee(payload)
 
 
 @app.patch("/employees/{employee_id}/status")
-def update_employee_status(employee_id: str, status: str, service: ComplianceService = Depends(get_service)):
+def update_employee_status(employee_id: str, status: str, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     try:
         return service.update_employee_status(employee_id, status)
     except ValueError as exc:
@@ -160,22 +249,25 @@ def update_employee_status(employee_id: str, status: str, service: ComplianceSer
 
 
 @app.get("/sessions")
-def sessions(department: str | None = None, service: ComplianceService = Depends(get_service)):
-    return service.list_sessions(department)
+def sessions(department: str | None = None, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)):
+    employee_id = user.get("db_id") if user.get("db_role") != "admin" else None
+    return service.list_sessions(department, employee_id=employee_id)
 
 
 @app.get("/audit-events")
-def audit_events(department: str | None = None, service: ComplianceService = Depends(get_service)):
-    return service.list_audit_events(department)
+def audit_events(department: str | None = None, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)):
+    employee_id = user.get("db_id") if user.get("db_role") != "admin" else None
+    return service.list_audit_events(department, employee_id=employee_id)
 
 
 @app.get("/reports/summary")
-def reports_summary(role: str = "admin", department: str | None = None, service: ComplianceService = Depends(get_service)):
-    return service.report_summary(role=role, department=department)
+def reports_summary(role: str = "admin", department: str | None = None, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)):
+    employee_id = user.get("db_id") if user.get("db_role") != "admin" else None
+    return service.report_summary(role=role, department=department, employee_id=employee_id)
 
 
 @app.patch("/audit-events/{event_id}/reviewed")
-def mark_audit_reviewed(event_id: str, service: ComplianceService = Depends(get_service)):
+def mark_audit_reviewed(event_id: str, user: dict = Depends(require_admin), service: ComplianceService = Depends(get_service)):
     try:
         return service.mark_audit_reviewed(event_id)
     except ValueError as exc:
@@ -183,12 +275,13 @@ def mark_audit_reviewed(event_id: str, service: ComplianceService = Depends(get_
 
 
 @app.post("/analyze", response_model=ComplianceReport)
-async def analyze(payload: AnalyzeRequest, service: ComplianceService = Depends(get_service)) -> ComplianceReport:
+async def analyze(payload: AnalyzeRequest, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)) -> ComplianceReport:
     if not payload.text.strip():
         raise HTTPException(status_code=400, detail="Text is required for analysis.")
 
-    report = service.analyze(payload)
-    logger.info("analysis document=%s score=%s violations=%s", payload.documentName or "untitled", report.score, report.flaggedSections)
+    employee_id = user.get("db_id")
+    report = service.analyze(payload, employee_id=employee_id)
+    logger.info("analysis completed score=%s violations=%s", report.score, report.flaggedSections)
     return report
 
 
@@ -198,6 +291,7 @@ async def analyze_upload(
     threshold: float = Form(0.62),
     department: str = Form("General"),
     team: str = Form("Workspace"),
+    user: dict = Depends(get_current_user),
     service: ComplianceService = Depends(get_service),
 ) -> dict[str, Any]:
     try:
@@ -209,13 +303,14 @@ async def analyze_upload(
         raise HTTPException(status_code=400, detail="Uploaded document did not contain extractable text.")
 
     payload = AnalyzeRequest(text=text, documentName=file.filename, threshold=threshold, department=department, team=team)
-    report = service.analyze(payload)
-    logger.info("upload analysis document=%s score=%s violations=%s", file.filename, report.score, report.flaggedSections)
+    employee_id = user.get("db_id")
+    report = service.analyze(payload, employee_id=employee_id)
+    logger.info("upload analysis completed score=%s violations=%s", report.score, report.flaggedSections)
     return {"text": text, "report": report.model_dump()}
 
 
 @app.post("/rewrite", response_model=RewriteResponse)
-async def rewrite(payload: RewriteRequest) -> RewriteResponse:
+async def rewrite(payload: RewriteRequest, user: dict = Depends(get_current_user)) -> RewriteResponse:
     text = payload.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Text is required for rewrite.")

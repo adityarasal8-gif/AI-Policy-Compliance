@@ -206,6 +206,13 @@ header p {
   align-items: end;
 }
 
+.extension-config-note {
+  grid-column: 1 / -1;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: -2px;
+}
+
 .extension-config label {
   display: grid;
   gap: 5px;

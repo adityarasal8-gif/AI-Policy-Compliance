@@ -37,8 +37,10 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 From inside `backend/`:
 
 ```bash
-python -m uvicorn --app-dir .. backend.app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
+
+If you want to keep the `backend.app.main:app` import path, run the command from the repository root or add `--app-dir ..` while staying in `backend/`.
 
 ## Notes
 

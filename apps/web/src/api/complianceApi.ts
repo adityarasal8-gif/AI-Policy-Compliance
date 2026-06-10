@@ -4,6 +4,7 @@ import {
   type Employee,
   type HealthResponse,
   type PolicyComparison,
+  type PolicyFileView,
   type PolicyReference,
   type ReportSummary,
   type RewriteResponse,
@@ -138,6 +139,16 @@ export async function comparePolicyVersions(policy: string) {
   return requestJson<PolicyComparison>(`/policies/compare?policy=${encodeURIComponent(policy)}`);
 }
 
+export async function viewPolicyFile(policy: string) {
+  return requestJson<PolicyFileView>(`/policies/view?policy=${encodeURIComponent(policy)}`);
+}
+
+export function getPolicyFileUrl(policy: string, version?: number) {
+  const params = new URLSearchParams({ policy });
+  if (version) params.set("version", String(version));
+  return `${API_BASE_URL}/policies/file?${params.toString()}`;
+}
+
 export async function getReportSummary(role: "admin" | "employee", department = "All") {
   return requestJson<ReportSummary>(`/reports/summary?role=${encodeURIComponent(role)}&department=${encodeURIComponent(department)}`);
 }
@@ -148,4 +159,8 @@ export async function togglePolicyReference(referenceId: string, enabled: boolea
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled })
   });
+}
+
+export async function deletePolicyDocument(policy: string) {
+  return requestJson<{ deleted: boolean; policy: string }>(`/policies/${encodeURIComponent(policy)}`, { method: "DELETE" });
 }

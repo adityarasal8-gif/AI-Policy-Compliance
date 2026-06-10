@@ -6,17 +6,30 @@ import type { AnalyzeRequest, RewriteRequest } from "@complylens/shared";
 
 async function readApiBaseUrl() {
   return new Promise<string>((resolve) => {
-    chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
+    chrome.storage?.local?.get(["complylensApiBaseUrl"], (result) => {
       resolve(result.complylensApiBaseUrl || "http://127.0.0.1:8000");
+    });
+  });
+}
+
+async function readAuthToken() {
+  return new Promise<string | undefined>((resolve) => {
+    chrome.storage?.local?.get(["complylensFirebaseToken"], (result) => {
+      resolve(result.complylensFirebaseToken);
     });
   });
 }
 
 async function proxyJson<TPayload>(path: string, payload: TPayload) {
   const base = await readApiBaseUrl();
+  const token = await readAuthToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const response = await fetch(`${base}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
 

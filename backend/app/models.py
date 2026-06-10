@@ -17,6 +17,7 @@ class PolicyReference(BaseModel):
     score: float = 0
     enabled: bool = True
     version: int = 1
+    createdAt: str | None = None
 
 
 class Violation(BaseModel):
@@ -97,6 +98,7 @@ class Employee(EmployeeInvite):
 
 class SavedSession(BaseModel):
     id: str
+    employeeId: str | None = None
     documentName: str
     department: str = "General"
     team: str = "Workspace"
@@ -109,6 +111,7 @@ class SavedSession(BaseModel):
 
 class AuditEvent(BaseModel):
     id: str
+    employeeId: str | None = None
     title: str
     detail: str
     owner: str = "Compliance"

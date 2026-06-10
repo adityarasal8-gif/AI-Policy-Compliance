@@ -6,10 +6,12 @@ import {
   type ComplianceReport,
   type Violation
 } from "@complylens/shared";
+import { getReportSummary } from "../api/complianceApi";
 import { analyzeDocument, analyzeUploadedDocument, getHealth, listAuditEvents, listEmployees, listPolicyVersions } from "../api/complianceApi";
 import { HighlightedEditor } from "../features/compliance/HighlightedEditor";
 import { useAuth } from "../auth/useAuth";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
+import { redactDocumentName } from "../lib/privacy";
 import type { Notice } from "../types";
 
 const emptyReport: ComplianceReport = {
@@ -41,6 +43,7 @@ export function DashboardPage() {
   const [department, setDepartment] = useState("Sales");
   const [team, setTeam] = useState("Outbound");
   const [policyChunks, setPolicyChunks] = useState(0);
+  const [blockedBeforeSend, setBlockedBeforeSend] = useState(0);
   const [policyCount, setPolicyCount] = useState(0);
   const [openAuditCount, setOpenAuditCount] = useState(0);
   const [employeeCount, setEmployeeCount] = useState(0);
@@ -65,6 +68,13 @@ export function DashboardPage() {
         setPolicyCount(policies.length);
         setOpenAuditCount(audits.filter((event) => event.status === "open").length);
         setEmployeeCount(employees.length);
+        try {
+          const summary = await getReportSummary("admin");
+          const blockedMetric = summary.metrics.find((m) => m.label === "Blocked before send");
+          setBlockedBeforeSend(blockedMetric ? blockedMetric.value : 0);
+        } catch {
+          setBlockedBeforeSend(0);
+        }
       } catch {
         setPolicyChunks(0);
         setPolicyCount(0);
@@ -93,7 +103,7 @@ export function DashboardPage() {
         setHasRun(true);
         setActiveId(result.report.violations[0]?.id ?? "");
         setHiddenIds([]);
-        setNotice({ kind: "success", text: `Analysis completed for ${selectedFile.name}.` });
+        setNotice({ kind: "success", text: `Analysis completed for ${redactDocumentName(selectedFile.name)}.` });
         return;
       }
 
@@ -127,7 +137,7 @@ export function DashboardPage() {
     setReport(emptyReport);
     setActiveId("");
     setHiddenIds([]);
-    setNotice({ kind: "success", text: `${file.name} is ready. Click Run Analysis to scan it.` });
+    setNotice({ kind: "success", text: `${redactDocumentName(file.name)} is ready. Click Run Analysis to scan it.` });
 
     if (/\.(txt|md|html|htm|eml|rtf)$/i.test(file.name)) {
       setDraft(await file.text());
@@ -200,7 +210,7 @@ export function DashboardPage() {
     const escapePdf = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
     const lines = [
       "ComplyLens Analysis Report",
-      `Document: ${documentName}`,
+      `Document: ${redactDocumentName(documentName)}`,
       `Department: ${department} / ${team}`,
       `Score: ${report.score} | Findings: ${visibleViolations.length} | Status: ${report.status}`,
       `Summary: ${report.summary ?? "No summary"}`,
@@ -250,7 +260,7 @@ export function DashboardPage() {
     const url = URL.createObjectURL(new Blob([pdf], { type: "application/pdf" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${documentName.replace(/\W+/g, "-") || "analysis-report"}.pdf`;
+    anchor.download = `${redactDocumentName(documentName).replace(/\W+/g, "-") || "analysis-report"}.pdf`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -274,8 +284,8 @@ export function DashboardPage() {
             <Link className="admin-dashboard-card primary" to="/policies">
               <Database size={20} />
               <span>Policy memory</span>
-              <strong>{policyChunks} chunks indexed</strong>
-              <small>Upload company rules and monitor retrieval health.</small>
+              <strong>{policyCount} files loaded</strong>
+              <small>Upload company rules and review the active policy library.</small>
             </Link>
             <Link className="admin-dashboard-card" to="/audit">
               <History size={20} />
@@ -307,7 +317,7 @@ export function DashboardPage() {
                 <BarChart3 size={20} />
               </div>
               <div className="admin-report-grid">
-                <div><BarChart3 size={17} /><span>Risk stopped</span><strong>38</strong><small>messages blocked before sending</small></div>
+                <div><BarChart3 size={17} /><span>Risk stopped</span><strong>{blockedBeforeSend}</strong><small>messages blocked before sending</small></div>
                 <div><ShieldCheck size={17} /><span>Policy versions</span><strong>{policyCount}</strong><small>live records from backend storage</small></div>
                 <div><AlertTriangle size={17} /><span>Open escalations</span><strong>{openAuditCount}</strong><small>need reviewer decision</small></div>
               </div>
@@ -383,7 +393,7 @@ export function DashboardPage() {
                 <div className="composer-meta">
                   <span>
                     <FileText size={16} />
-                    {documentName}
+                    {redactDocumentName(documentName)}
                   </span>
                   <span>{draft.trim().split(/\s+/).filter(Boolean).length} words</span>
                 </div>

@@ -9,6 +9,11 @@ const AUTO_SCAN_IDLE_MS = 900;
 const AUTO_SCAN_MIN_BODY_CHARS = 12;
 const AUTO_SCAN_MIN_SUBJECT_CHARS = 3;
 
+const PANEL_MIN_WIDTH = 260;
+const PANEL_MAX_WIDTH = 360;
+const PANEL_MIN_HEIGHT = 240;
+const PANEL_GAP = 16;
+
 type DraftSnapshot = {
   subject: string;
   body: string;
@@ -27,10 +32,14 @@ void initialize();
 function initialize() {
   injectStyles();
   positionFab();
-  setInterval(positionFab, 1200);
-  window.addEventListener("resize", positionFab);
-  window.addEventListener("scroll", positionFab, true);
-  document.addEventListener("input", scheduleLiveScan, true);
+  const observer = new MutationObserver(() => {
+    positionFab();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, characterData: true });
+
+  window.addEventListener("resize", positionFab, { passive: true });
+  window.addEventListener("scroll", positionFab, { passive: true, capture: true });
+  document.addEventListener("input", scheduleLiveScan, { passive: true, capture: true });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "getSnapshot") {
@@ -160,7 +169,7 @@ function getCurrentState() {
 
 async function readApiBaseUrl() {
   return new Promise<string>((resolve) => {
-    chrome.storage?.sync?.get(["complylensApiBaseUrl"], (result) => {
+    chrome.storage?.local?.get(["complylensApiBaseUrl"], (result) => {
       resolve(result.complylensApiBaseUrl || "http://127.0.0.1:8000");
     });
   });
@@ -269,7 +278,7 @@ function ensureFab() {
     cursor: "pointer",
     display: "none"
   });
-  fab.addEventListener("click", () => void scanDraft());
+  fab.addEventListener("click", () => togglePanel());
   document.body.appendChild(fab);
   return fab;
 }
@@ -278,20 +287,26 @@ function ensureTooltip() {
   let tooltip = document.getElementById(TOOLTIP_ID);
   if (tooltip) return tooltip;
 
-  tooltip = createElement("section", { id: TOOLTIP_ID });
+  // Render a persistent side panel instead of a small tooltip over the compose box.
+  tooltip = createElement("aside", { id: TOOLTIP_ID });
   setStyles(tooltip, {
     position: "fixed",
     zIndex: "2147483647",
-    width: "332px",
+    width: "360px",
+    top: "72px",
+    left: "16px",
+    height: "calc(100vh - 96px)",
     padding: "14px",
-    border: "1px solid rgba(148,163,184,.22)",
-    borderRadius: "18px",
-    background: "linear-gradient(160deg, rgba(255,255,255,.98), rgba(248,250,252,.9))",
+    border: "1px solid rgba(148,163,184,.14)",
+    borderRadius: "12px",
+    background: "linear-gradient(160deg, rgba(255,255,255,.98), rgba(248,250,252,.96))",
     color: "#0f172a",
     font: "13px 'Geist', Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    boxShadow: "0 20px 46px rgba(15,23,42,.18)",
-    backdropFilter: "blur(14px)",
-    display: "none"
+    boxShadow: "0 20px 46px rgba(15,23,42,.12)",
+    backdropFilter: "blur(6px)",
+    display: "none",
+    overflowY: "auto",
+    maxHeight: "calc(100vh - 32px)"
   });
   document.body.appendChild(tooltip);
   return tooltip;
@@ -299,6 +314,18 @@ function ensureTooltip() {
 
 function hideTooltip() {
   ensureTooltip().style.display = "none";
+}
+
+function togglePanel() {
+  const panel = ensureTooltip();
+  if (panel.style.display === "block") {
+    panel.style.display = "none";
+  } else {
+    panel.style.display = "block";
+    positionTooltip();
+    // Refresh scan when opening the panel
+    void scanDraft();
+  }
 }
 
 function findQuoteRect(quote: string) {
@@ -332,10 +359,10 @@ function updateHighlights() {
   }
 
   const ranges: Range[] = [];
-  for (const violation of latestReport.violations) {
-    if (isSubjectViolation(violation) || !violation.quote.trim()) continue;
-    
-    const quote = violation.quote.trim();
+  // Only highlight the top (first) violation to present a single suggested rewrite
+  const top = latestReport.violations[0];
+  if (top && !isSubjectViolation(top) && top.quote.trim()) {
+    const quote = top.quote.trim();
     const walker = document.createTreeWalker(compose, NodeFilter.SHOW_TEXT);
     let node: Node | null = walker.nextNode();
     while (node) {
@@ -373,33 +400,54 @@ function positionFab() {
   fab.style.placeItems = "center";
   fab.style.left = `${Math.max(16, rect.right - 56)}px`;
   fab.style.top = `${Math.max(16, rect.bottom - 56)}px`;
+
+  if (ensureTooltip().style.display === "block") {
+    positionTooltip();
+  }
 }
 
-function positionTooltip(quote?: string, source: "Subject" | "Body" = "Body") {
-  const tooltip = ensureTooltip();
+function positionTooltip(_quote?: string, _source: "Subject" | "Body" = "Body") {
+  const panel = ensureTooltip();
   const anchor = getComposeAnchor();
   if (!anchor) return;
 
-  const anchorRect = anchor.getBoundingClientRect();
-  const top = Math.max(16, anchorRect.top);
-  
-  const tooltipWidth = 332;
-  const GAP = 32; // Increased gap to ensure it doesn't touch the compose box
-  let left = anchorRect.right + GAP;
-  
-  // If placing it on the right overflows the window (typical for Gmail default layout),
-  // place it on the left side of the compose box instead.
-  if (left + tooltipWidth + GAP > window.innerWidth) {
-    left = anchorRect.left - tooltipWidth - GAP;
-  }
-  
-  // Fallback if window is too narrow
-  if (left < GAP) {
-    left = window.innerWidth - tooltipWidth - GAP;
+  const rect = anchor.getBoundingClientRect();
+  const rightSpace = Math.max(0, window.innerWidth - rect.right - PANEL_GAP);
+  const leftSpace = Math.max(0, rect.left - PANEL_GAP);
+
+  const rightFits = rightSpace >= PANEL_MIN_WIDTH;
+  const leftFits = leftSpace >= PANEL_MIN_WIDTH;
+  let side: "left" | "right" = "right";
+
+  if (rightFits && !leftFits) {
+    side = "right";
+  } else if (leftFits && !rightFits) {
+    side = "left";
+  } else {
+    side = rightSpace >= leftSpace ? "right" : "left";
   }
 
-  tooltip.style.top = `${top}px`;
-  tooltip.style.left = `${Math.max(16, left)}px`;
+  const available = side === "right" ? rightSpace : leftSpace;
+  const width = Math.min(PANEL_MAX_WIDTH, available);
+
+  if (width < 160) {
+    panel.style.display = "none";
+    return;
+  }
+
+  panel.style.width = `${width}px`;
+  panel.style.right = "auto";
+
+  const left = side === "right"
+    ? rect.right + PANEL_GAP
+    : rect.left - PANEL_GAP - width;
+
+  panel.style.left = `${Math.max(8, left)}px`;
+
+  const top = Math.max(16, rect.top);
+  const height = Math.max(PANEL_MIN_HEIGHT, window.innerHeight - top - PANEL_GAP);
+  panel.style.top = `${top}px`;
+  panel.style.height = `${height}px`;
 }
 
 function actionButton(label: string, accent = false) {
@@ -530,6 +578,7 @@ function renderTooltip(state: "ready" | "loading" | "error", message = "") {
     tooltip.append(loading);
     tooltip.style.display = "block";
     positionTooltip();
+    ensureTooltip().scrollTop = 0;
     return;
   }
 
@@ -539,6 +588,7 @@ function renderTooltip(state: "ready" | "loading" | "error", message = "") {
     tooltip.append(error);
     tooltip.style.display = "block";
     positionTooltip();
+    ensureTooltip().scrollTop = 0;
     return;
   }
 
@@ -548,6 +598,7 @@ function renderTooltip(state: "ready" | "loading" | "error", message = "") {
     tooltip.append(ok);
     tooltip.style.display = "block";
     positionTooltip();
+    ensureTooltip().scrollTop = 0;
     return;
   }
 
@@ -561,13 +612,14 @@ function renderTooltip(state: "ready" | "loading" | "error", message = "") {
     paddingRight: "4px"
   });
 
-  for (const violation of latestReport.violations) {
-    cardsContainer.append(violationCard(violation));
-  }
+  // Render only the top (first) violation so a single rewrite is suggested
+  const topViolation = latestReport.violations[0];
+  if (topViolation) cardsContainer.append(violationCard(topViolation));
   
   tooltip.append(cardsContainer);
   tooltip.style.display = "block";
   positionTooltip(latestReport.violations[0]?.quote, isSubjectViolation(latestReport.violations[0]) ? "Subject" : "Body");
+  ensureTooltip().scrollTop = 0;
 }
 
 async function applyViolationRewrite(violation: Violation) {

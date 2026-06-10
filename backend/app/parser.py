@@ -141,6 +141,52 @@ def _extract_pdf_with_pymupdf(data: bytes) -> str:
     doc.close()
     return "\n\n".join(pages_text).strip()
 
+
+def extract_text_from_bytes(data: bytes, filename: str | None = None) -> str:
+    name = (filename or "").lower()
+
+    if name.endswith((".txt", ".md")):
+        return data.decode("utf-8", errors="replace")
+
+    if name.endswith((".html", ".htm")):
+        return _strip_html_tags(data.decode("utf-8", errors="replace"))
+
+    if name.endswith(".eml"):
+        return _extract_email_text(data)
+
+    if name.endswith(".pdf"):
+        try:
+            import fitz
+        except ImportError:
+            try:
+                from pypdf import PdfReader
+            except ImportError as exc:
+                raise RuntimeError("PDF parsing requires pypdf. Install backend/requirements.txt.") from exc
+
+            reader = PdfReader(BytesIO(data))
+            return "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
+
+        return _extract_pdf_with_pymupdf(data)
+
+    if name.endswith(".docx"):
+        try:
+            from docx import Document
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise RuntimeError("DOCX parsing requires python-docx. Install backend/requirements.txt.") from exc
+
+        document = Document(BytesIO(data))
+        return "\n".join(paragraph.text for paragraph in document.paragraphs).strip()
+
+    if name.endswith((".doc", ".rtf")):
+        if sys.platform != "darwin":
+            raise RuntimeError("DOC or RTF parsing requires macOS textutil. Convert to DOCX or PDF.")
+        try:
+            return _extract_via_textutil(data, suffix=Path(name).suffix)
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+            raise RuntimeError("DOC or RTF parsing requires macOS textutil.") from exc
+
+    raise ValueError("Unsupported file type. Upload PDF, DOC, DOCX, EML, HTML, Markdown, RTF, or TXT.")
+
     if filename.endswith((".doc", ".rtf")):
         if sys.platform != "darwin":
             raise RuntimeError("DOC or RTF parsing requires macOS textutil. Convert to DOCX or PDF.")

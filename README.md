@@ -61,6 +61,8 @@ pip install -r backend/requirements.txt
 python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 
+If you run the command from inside `backend/`, use `python -m uvicorn app.main:app --reload --port 8000` instead.
+
 ## Run
 
 ```bash
