@@ -161,7 +161,7 @@ def _extract_json(payload: str) -> str | None:
     return payload[start : end + 1]
 
 
-def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) -> Optional[ComplianceReport]:
+def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62, department: str | None = None) -> Optional[ComplianceReport]:
     """Optional LLM-based analysis using Groq when API key is available.
     
     Integrated from legacy backend for enhanced compliance detection.
@@ -177,14 +177,11 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
     if not llm_api_key:
         return None
     
-    references = store.retrieve(text, top_k=3)
-    contexts = []
-    for ref in references:
-        md = ref.model_dump(exclude={"score"}) if hasattr(ref, "model_dump") else ref
-        ctx = f"Policy: {md.get('policy', 'unknown')} | Section: {md.get('section', 'unknown')}\n{md.get('text', '')}"
-        contexts.append(ctx)
-    
     try:
+        # Retrieve context from vector store, filtered by the employee's department
+        references = store.retrieve(text, top_k=3, department=department)
+        contexts = [ref.text for ref in references]
+        
         parser = PydanticOutputParser(pydantic_object=LLMComplianceResult)
         format_instructions = parser.get_format_instructions()
         
@@ -193,25 +190,23 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
             (
                 "system",
                 "You are a strict compliance ghostwriter, not a teacher. "
-                "Your job is to detect policy violations and produce a usable rewrite the user can send immediately. "
-                "For every violation, populate violated_policy with the exact company policy document and section or clause violated, such as 'IT Security Policy v2, Section 4.1'. "
-                "If no exact policy can be named from the provided context, set violated_policy to null. "
+                "Your job is to detect compliance and policy violations IN THE USER'S TEXT and produce a usable rewrite. "
+                "CRITICAL: Do not invent violations for policies that are completely unrelated to the user's text. However, you MUST flag unsafe claims (e.g. 'impossible to hack', '100% guaranteed'), sensitive data sharing, or inappropriate language. "
+                "For every violation, populate violated_policy with the exact company policy document and section or clause violated. "
+                "If no exact policy can be named from the provided context, set violated_policy to 'General Compliance'. "
                 "The suggested_rewrite field must be a direct, drop-in replacement written from the user's first-person perspective. "
                 "It must be ready to send immediately and must not contain explanations, meta-commentary, warnings, or instructions about what to do. "
-                "If the original text is 'Send me your password', a valid rewrite would be 'Please share the necessary credentials via our secure enterprise password manager.' "
-                "Never produce text like 'Remove the sensitive token...' or 'Please consider...' in suggested_rewrite. "
-                "Do not invent policies, do not explain your reasoning, and return only valid JSON that matches the schema."
+                "Do not flag the policy text itself as a violation, and return only valid JSON that matches the schema."
             ),
             (
                 "human",
                 "Analyze the following text for compliance violations:\n{text}\n\n"
                 "Policy context:\n{policy_context}\n\n"
                 "Rules:\n"
-                "- violated_policy must name the exact violated policy document and section/clause or be null if no exact match exists.\n"
+                "- ONLY create a violation if the user's text has an issue. If the text is fine, return an empty violations list.\n"
+                "- violated_policy must name the policy document and section/clause, or 'General Compliance'.\n"
                 "- suggested_rewrite must be a direct, drop-in replacement for the original text.\n"
-                "- suggested_rewrite must be written from the user's first-person perspective and be ready to send immediately.\n"
-                "- suggested_rewrite must NOT contain explanations, meta-commentary, warnings, teaching language, or instructions about what to do.\n"
-                "- suggested_rewrite should sound like the user is sending a safe, compliant message now, not describing how to fix the message.\n\n"
+                "- suggested_rewrite must NOT contain explanations, warnings, or teaching language.\n\n"
                 "{format_instructions}"
             ),
         ])
@@ -236,9 +231,27 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
         
         # Convert ComplianceResult to ComplianceReport
         violations: list[Violation] = []
+        seen_flagged_texts: set[str] = set()
+        
         if parsed.violations:
             for v in parsed.violations:
-                ref = best_reference(references, v.policy_reference) if hasattr(v, "policy_reference") else best_reference(references, v.violated_policy or "")
+                # Filter out hallucinations using word overlap
+                flag_words = set(re.findall(r'\w+', (v.flagged_text or "").lower()))
+                text_words = set(re.findall(r'\w+', text.lower()))
+                
+                # If there are no words, or less than 20% overlap with the original text, it's likely a hallucination
+                # unless the flagged text is very short (1-2 words)
+                overlap = len(flag_words.intersection(text_words))
+                if len(flag_words) > 2 and overlap == 0:
+                    continue
+                
+                # Deduplicate
+                normalized_flag = (v.flagged_text or text).lower().strip()
+                if normalized_flag in seen_flagged_texts:
+                    continue
+                seen_flagged_texts.add(normalized_flag)
+                
+                ref = best_reference(references, v.violated_policy or "")
                 
                 rewrite = v.suggested_rewrite.strip()
                 # Remove common prefixes LLMs like to add despite instructions
@@ -251,34 +264,33 @@ def _analyze_with_llm(text: str, store: PolicyStore, threshold: float = 0.62) ->
                 violations.append(
                     Violation(
                         id=f"llm-{uuid.uuid4().hex[:8]}",
-                        severity="high" if not parsed.is_compliant else "medium",
+                        severity="high", # default for LLM identified
                         confidence=0.85,
-                        quote=v.flagged_text,
+                        quote=v.flagged_text or text,
                         policyName=ref.policy,
                         policySection=ref.section,
-                        violatedPolicy=v.violated_policy or f"{ref.policy}, {ref.section}",
+                        violatedPolicy=v.violated_policy,
                         ruleText=ref.text,
                         explanation=v.explanation,
                         rewrite=v.suggested_rewrite,
                         citation=ref,
+                        status="open",
                     )
                 )
-        
-        score = 100 if parsed.is_compliant else max(0, 100 - len(violations) * 30)
-        status = "ready" if parsed.is_compliant else "blocked" if len(violations) > 0 else "review"
-        
+                
         return ComplianceReport(
             id=f"report-llm-{uuid.uuid4().hex[:10]}",
-            score=score,
-            cleanSections=1 if parsed.is_compliant else 0,
+            score=100 - (len(violations) * 30),
+            cleanSections=1 if not violations else 0,
             flaggedSections=len(violations),
-            status=status,
-            summary=f"LLM analysis: {len(violations)} issues found." if violations else "LLM analysis: No issues found.",
+            status="blocked" if violations else "ready",
+            summary=f"LLM analysis: {len(violations)} issues found." if violations else "Draft is safe.",
             source="backend",
             violations=violations,
             references=references,
         )
-    except Exception:
+    except Exception as e:
+        logger.error("LLM analysis failed: %s", e, exc_info=True)
         return None
 
 
@@ -349,10 +361,10 @@ def _generate_safe_rewrite(sentence: str, pattern_keywords: list[str] | tuple[st
     return s
 
 
-def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> ComplianceReport:
+def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62, department: str | None = None) -> ComplianceReport:
     sentences = split_sentences(text)
     violations: list[Violation] = []
-    references = store.retrieve(text, top_k=8)
+    references = store.retrieve(text, top_k=8, department=department)
     lowered_text = text.lower()
 
     # Detect high-sensitivity tokens across entire text and immediately flag.
@@ -394,7 +406,7 @@ def analyze_text(text: str, store: PolicyStore, threshold: float = 0.62) -> Comp
     # Try LLM analysis first if available and not explicitly disabled.
     llm_disabled = os.getenv("ENABLE_LLM_ANALYSIS", "true").lower() in ("false", "0", "no")
     if not llm_disabled:
-        llm_report = _analyze_with_llm(text, store, threshold)
+        llm_report = _analyze_with_llm(text, store, threshold, department=department)
         if llm_report:
             return llm_report
 

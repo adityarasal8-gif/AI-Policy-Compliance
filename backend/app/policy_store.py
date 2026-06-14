@@ -89,7 +89,7 @@ class PolicyStore:
     def load_references(self, references: list[PolicyReference]) -> None:
         self._chunks = [PolicyChunk(reference=reference, vector=vectorize(reference.text)) for reference in references]
 
-    def add_policy_text(self, text: str, policy: str, section: str = "Uploaded policy", owner: str = "Compliance", version: int = 1, createdAt: str | None = None) -> list[PolicyReference]:
+    def add_policy_text(self, text: str, policy: str, section: str = "Uploaded policy", owner: str = "Compliance", department: str = "All", version: int = 1, createdAt: str | None = None) -> list[PolicyReference]:
         references: list[PolicyReference] = []
         for chunk in chunk_text(text):
             reference = PolicyReference(
@@ -97,6 +97,7 @@ class PolicyStore:
                 policy=policy,
                 section=section,
                 owner=owner,
+                department=department,
                 text=chunk,
                 version=version,
                 createdAt=createdAt,
@@ -105,11 +106,13 @@ class PolicyStore:
             references.append(reference)
         return references
 
-    def retrieve(self, query: str, top_k: int = 5) -> list[PolicyReference]:
+    def retrieve(self, query: str, top_k: int = 5, department: str | None = None) -> list[PolicyReference]:
         query_vector = vectorize(query)
         ranked = []
         for chunk in self._chunks:
             if not chunk.reference.enabled:
+                continue
+            if department and chunk.reference.department not in ("All", department, "General"):
                 continue
             score = cosine(query_vector, chunk.vector)
             if score > 0:

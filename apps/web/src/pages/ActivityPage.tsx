@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Activity, Bot, CheckCircle2, Download, FileText, GitBranch, MailCheck, ShieldCheck } from "lucide-react";
+import useSWR from "swr";
 import { useAuth } from "../auth/useAuth";
 import { PanelTitle } from "../components/common/PanelTitle";
 import { WorkspaceShell } from "../layouts/WorkspaceShell";
@@ -15,41 +16,33 @@ export function ActivityPage() {
   const role = profile?.role ?? "employee";
   const [filter, setFilter] = useState<"all" | "open" | "reviewed">("all");
   const [department, setDepartment] = useState("All");
-  const [auditEvents, setAuditEvents] = useState<AuditEventRow[]>([]);
-  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
 
-  useEffect(() => {
-    if (role === "admin") void refreshAuditEvents();
-    if (role === "employee") void refreshSavedSessions();
-  }, [role, department]);
+  const { data: auditEventsData, mutate: mutateAuditEvents, isLoading: loadingAudits } = useSWR(
+    role === "admin" ? ["auditEvents", department] : null,
+    () => listAuditEvents(department),
+    { fallbackData: [] }
+  );
 
-  async function refreshAuditEvents() {
-    try {
-      const events = await listAuditEvents(department);
-      setAuditEvents(events);
-    } catch {
-      setAuditEvents([]);
-    }
-  }
+  const { data: savedSessionsData, isLoading: loadingSessions } = useSWR(
+    role === "employee" ? ["savedSessions", department] : null,
+    () => listSavedSessions(department),
+    { fallbackData: [] }
+  );
 
-  async function refreshSavedSessions() {
-    try {
-      const sessions = await listSavedSessions(department);
-      setSavedSessions(sessions);
-    } catch {
-      setSavedSessions([]);
-    }
-  }
+  const auditEvents = auditEventsData as AuditEventRow[];
+  const savedSessions = savedSessionsData as SavedSession[];
 
   const visibleAuditEvents = useMemo(
     () => auditEvents.filter((event) => filter === "all" || event.status === filter),
     [auditEvents, filter]
   );
 
+  const isLoading = role === "admin" ? loadingAudits : loadingSessions;
+
   async function markReviewed(id: string) {
     try {
       const updated = await markAuditEventReviewed(id);
-      setAuditEvents((events) => events.map((event) => event.id === id ? updated : event));
+      await mutateAuditEvents((events) => events?.map((event) => event.id === id ? updated : event), { revalidate: false });
     } catch {
       // Intentionally swallow error or show notice (removed offline fallback)
     }

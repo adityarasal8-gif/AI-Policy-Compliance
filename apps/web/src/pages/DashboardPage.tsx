@@ -1,4 +1,5 @@
 import { ChangeEvent, DragEvent, useEffect, useRef, useState } from "react";
+import useSWR from "swr";
 import { AlertTriangle, ArrowUp, BarChart3, CheckCircle2, Database, Download, FileText, History, KeyRound, MailCheck, Paperclip, RefreshCw, ShieldCheck, UploadCloud, UsersRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -42,49 +43,38 @@ export function DashboardPage() {
   const [notice, setNotice] = useState<Notice>(null);
   const [department, setDepartment] = useState("Sales");
   const [team, setTeam] = useState("Outbound");
-  const [policyChunks, setPolicyChunks] = useState(0);
-  const [blockedBeforeSend, setBlockedBeforeSend] = useState(0);
-  const [policyCount, setPolicyCount] = useState(0);
-  const [openAuditCount, setOpenAuditCount] = useState(0);
-  const [employeeCount, setEmployeeCount] = useState(0);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const { data: adminSummary, isLoading: adminLoading } = useSWR(
+    role === "admin" ? "dashboardAdminSummary" : null,
+    async () => {
+      const [health, policies, audits, employees, summary] = await Promise.all([
+        getHealth(),
+        listPolicyVersions(),
+        listAuditEvents("All"),
+        listEmployees(),
+        getReportSummary("admin").catch(() => null)
+      ]);
+      const blockedMetric = summary?.metrics.find((m) => m.label === "Blocked before send");
+      return {
+        policyChunks: health.policy_chunks,
+        policyCount: policies.length,
+        openAuditCount: audits.filter((event) => event.status === "open").length,
+        employeeCount: employees.length,
+        blockedBeforeSend: blockedMetric ? blockedMetric.value : 0
+      };
+    },
+    { fallbackData: { policyChunks: 0, policyCount: 0, openAuditCount: 0, employeeCount: 0, blockedBeforeSend: 0 } }
+  );
 
+  const policyChunks = adminSummary?.policyChunks ?? 0;
+  const policyCount = adminSummary?.policyCount ?? 0;
+  const openAuditCount = adminSummary?.openAuditCount ?? 0;
+  const employeeCount = adminSummary?.employeeCount ?? 0;
+  const blockedBeforeSend = adminSummary?.blockedBeforeSend ?? 0;
+  
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const visibleViolations = report.violations.filter((violation) => !hiddenIds.includes(violation.id));
   const activeViolation = visibleViolations.find((violation) => violation.id === activeId) ?? visibleViolations[0];
   const canAnalyze = Boolean(selectedFile || draft.trim());
-
-  useEffect(() => {
-    if (role !== "admin") return;
-
-    async function loadAdminSummary() {
-      try {
-        const [health, policies, audits, employees] = await Promise.all([
-          getHealth(),
-          listPolicyVersions(),
-          listAuditEvents("All"),
-          listEmployees()
-        ]);
-        setPolicyChunks(health.policy_chunks);
-        setPolicyCount(policies.length);
-        setOpenAuditCount(audits.filter((event) => event.status === "open").length);
-        setEmployeeCount(employees.length);
-        try {
-          const summary = await getReportSummary("admin");
-          const blockedMetric = summary.metrics.find((m) => m.label === "Blocked before send");
-          setBlockedBeforeSend(blockedMetric ? blockedMetric.value : 0);
-        } catch {
-          setBlockedBeforeSend(0);
-        }
-      } catch {
-        setPolicyChunks(0);
-        setPolicyCount(0);
-        setOpenAuditCount(0);
-        setEmployeeCount(0);
-      }
-    }
-
-    void loadAdminSummary();
-  }, [role]);
 
   async function runAnalysis() {
     if (!canAnalyze) {

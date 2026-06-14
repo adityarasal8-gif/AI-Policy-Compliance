@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import useSWR from "swr";
 import { BarChart3, Bell, CheckCircle2, Gauge, KeyRound, Palette, Puzzle, RefreshCw, ShieldCheck, SlidersHorizontal, UserPlus, UsersRound } from "lucide-react";
 import { useAuth } from "../auth/useAuth";
 import { inviteEmployee, listEmployees, saveCompanySettings, updateEmployeeStatus, getReportSummary } from "../api/complianceApi";
@@ -53,38 +54,30 @@ export function SettingsPage() {
   const [apiKey, setApiKey] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("https://company.com/api/complylens/webhook");
   const [extensionSteps, setExtensionSteps] = useState(["build", "load"]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const { data: employeesData, mutate: mutateEmployees } = useSWR(
+    role === "admin" ? "employees" : null,
+    () => listEmployees(),
+    { fallbackData: [] }
+  );
+  const employees = employeesData as Employee[];
+
   const [inviteEmail, setInviteEmail] = useState("employee@company.com");
   const [adminMetrics, setAdminMetrics] = useState<typeof adminReports>(adminReports);
   const [riskStopped, setRiskStopped] = useState<number>(0);
 
-  useEffect(() => {
-    if (role === "admin") {
-      void refreshEmployees();
-    }
-  }, [role]);
+  const { data: summaryData } = useSWR(
+    role === "admin" ? "settingsReportSummary" : null,
+    () => getReportSummary("admin"),
+    { fallbackData: null }
+  );
 
   useEffect(() => {
-    if (role !== "admin") return;
-    void (async () => {
-      try {
-        const summary = await getReportSummary("admin");
-        const blocked = summary.metrics.find((m) => m.label === "Blocked before send")?.value ?? 0;
-        setRiskStopped(blocked);
-        setAdminMetrics((items) => items.map((it) => it.label === "Risk stopped" ? { ...it, value: String(blocked) } : it));
-      } catch {
-        // leave defaults
-      }
-    })();
-  }, [role]);
-
-  async function refreshEmployees() {
-    try {
-      setEmployees(await listEmployees());
-    } catch {
-      setEmployees([]);
+    if (summaryData) {
+      const blocked = summaryData.metrics.find((m) => m.label === "Blocked before send")?.value ?? 0;
+      setRiskStopped(blocked);
+      setAdminMetrics((items) => items.map((it) => it.label === "Risk stopped" ? { ...it, value: String(blocked) } : it));
     }
-  }
+  }, [summaryData]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -124,7 +117,7 @@ export function SettingsPage() {
   async function submitInvite() {
     try {
       const employee = await inviteEmployee({ email: inviteEmail, name: inviteEmail.split("@")[0] || "New employee", department: "Sales", role: "employee", sendEmail: true });
-      setEmployees((items) => [employee, ...items]);
+      await mutateEmployees((items) => [employee, ...(items || [])], { revalidate: false });
       setNotice({ kind: "success", text: `Invite created for ${maskEmail(employee.email)}. ${employee.emailStatus === "sent" ? "Email sent." : "Invitation stored securely."}` });
     } catch (error) {
       setNotice({ kind: "error", text: `Could not invite employee. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
@@ -134,9 +127,9 @@ export function SettingsPage() {
   async function changeEmployeeStatus(employee: Employee, status: Employee["status"]) {
     try {
       const updated = await updateEmployeeStatus(employee.id, status);
-      setEmployees((items) => items.map((item) => item.id === updated.id ? updated : item));
+      await mutateEmployees((items) => items?.map((item) => item.id === updated.id ? updated : item), { revalidate: false });
     } catch {
-      setEmployees((items) => items.map((item) => item.id === employee.id ? { ...item, status } : item));
+      await mutateEmployees((items) => items?.map((item) => item.id === employee.id ? { ...item, status } : item), { revalidate: false });
     }
   }
 

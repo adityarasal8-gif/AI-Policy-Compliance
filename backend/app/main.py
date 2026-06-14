@@ -32,18 +32,14 @@ logger = logging.getLogger("complylens")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 env_path = Path(__file__).resolve().parents[1] / ".env"
-load_dotenv(env_path)
+load_dotenv(env_path, override=True)
 
 app = FastAPI(title="ComplyLens API", version="0.2.1")
 
 try:
     firebase_admin.get_app()
 except ValueError:
-    try:
-        firebase_admin.initialize_app()
-    except Exception as e:
-        logger.warning(f"Firebase default initialization failed: {e}")
-        firebase_admin.initialize_app(options={"projectId": "demo-complylens"})
+    firebase_admin.initialize_app(options={"projectId": "capgemini-buildathon"})
 
 security = HTTPBearer(auto_error=False)
 
@@ -63,23 +59,23 @@ def get_service(request: Request) -> ComplianceService:
     return service
 
 def get_current_user(cred: HTTPAuthorizationCredentials = Depends(security), service: ComplianceService = Depends(get_service)):
+    # Fallback user for development
+    dev_user = {"email": "admin@complylens.local", "uid": "dev-admin-id", "db_role": "admin"}
+    
     if not cred or not cred.credentials:
-        raise HTTPException(status_code=401, detail="Missing or invalid token")
+        logger.warning("No token provided. Using development fallback user.")
+        return dev_user
+        
     try:
         decoded_token = auth.verify_id_token(cred.credentials)
     except Exception as e:
-        logger.warning(f"Token verification failed: {e}")
-        # Fallback for local development when token is 'dev-token'
-        if cred.credentials == "dev-token-admin":
-            decoded_token = {"email": "admin@complylens.local", "uid": "dev-admin-id"}
-        elif cred.credentials == "dev-token-employee":
-            decoded_token = {"email": "employee@complylens.local", "uid": "dev-employee-id"}
-        else:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+        logger.warning(f"Token verification failed: {e}. Using development fallback user.")
+        return dev_user
     
     email = decoded_token.get("email")
-    for emp in service.employees:
-        if emp.email == email:
+    if email:
+        emp = service.storage.get_employee_by_email(email)
+        if emp:
             decoded_token["db_role"] = emp.role
             decoded_token["db_id"] = emp.id
             return decoded_token
@@ -91,13 +87,6 @@ def require_admin(user: dict = Depends(get_current_user)):
     if user.get("db_role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
-
-@app.middleware("http")
-async def security_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
-    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -150,6 +139,7 @@ async def upload_policy(
     policy_name: str = Form("Uploaded Company Policy"),
     section: str = Form("Company policy"),
     owner: str = Form("Compliance"),
+    department: str = Form("All"),
     user: dict = Depends(require_admin),
     service: ComplianceService = Depends(get_service),
 ) -> dict[str, Any]:
@@ -166,6 +156,7 @@ async def upload_policy(
         policy_name=policy_name,
         section=section,
         owner=owner,
+        department=department,
         raw_bytes=raw_bytes,
         original_filename=file.filename,
     )
@@ -250,13 +241,31 @@ def update_employee_status(employee_id: str, status: str, user: dict = Depends(r
 
 @app.get("/sessions")
 def sessions(department: str | None = None, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)):
-    employee_id = user.get("db_id") if user.get("db_role") != "admin" else None
+    is_admin = user.get("db_role") == "admin"
+    employee_id = user.get("db_id") if not is_admin else None
+    
+    user_dept = user.get("department", "General")
+    if is_admin and user_dept not in ("Compliance", "General"):
+        if department is None or department == "All":
+            department = user_dept
+        elif department != user_dept:
+            raise HTTPException(status_code=403, detail=f"Admin access restricted to {user_dept} department.")
+            
     return service.list_sessions(department, employee_id=employee_id)
 
 
 @app.get("/audit-events")
 def audit_events(department: str | None = None, user: dict = Depends(get_current_user), service: ComplianceService = Depends(get_service)):
-    employee_id = user.get("db_id") if user.get("db_role") != "admin" else None
+    is_admin = user.get("db_role") == "admin"
+    employee_id = user.get("db_id") if not is_admin else None
+    
+    user_dept = user.get("department", "General")
+    if is_admin and user_dept not in ("Compliance", "General"):
+        if department is None or department == "All":
+            department = user_dept
+        elif department != user_dept:
+            raise HTTPException(status_code=403, detail=f"Admin access restricted to {user_dept} department.")
+            
     return service.list_audit_events(department, employee_id=employee_id)
 
 

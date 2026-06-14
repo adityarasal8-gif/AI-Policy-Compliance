@@ -13,20 +13,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
-      "Cross-Origin-Embedder-Policy": "unsafe-none"
-    },
     fs: {
       allow: ["../.."]
     }
   },
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
-      "Cross-Origin-Embedder-Policy": "unsafe-none"
-    }
-  },
+  preview: {},
   build: {
     outDir: "../../dist/web",
     emptyOutDir: true

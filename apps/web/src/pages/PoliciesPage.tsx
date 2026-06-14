@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { ArrowRight, BadgeCheck, Database, FileSearch, GitBranch, Layers3, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { type PolicyReference } from "@complylens/shared";
 import { useAuth } from "../auth/useAuth";
@@ -12,7 +13,13 @@ export function PoliciesPage() {
   const role = profile?.role ?? "employee";
   const [notice, setNotice] = useState<Notice>(null);
   const [uploading, setUploading] = useState(false);
-  const [policyVersions, setPolicyVersions] = useState<PolicyReference[]>([]);
+  const { data: policyVersionsData, mutate: mutatePolicyVersions } = useSWR(
+    role === "admin" ? "policyVersions" : null,
+    () => listPolicyVersions(),
+    { fallbackData: [] }
+  );
+
+  const policyVersions = policyVersionsData as PolicyReference[];
   const [policySearch, setPolicySearch] = useState("");
   const enabledPolicies = policyVersions.filter((policy) => policy.enabled !== false).length;
   const filteredPolicies = useMemo(() => {
@@ -23,19 +30,6 @@ export function PoliciesPage() {
       return haystack.includes(query);
     });
   }, [policySearch, policyVersions]);
-
-  useEffect(() => {
-    void refreshPolicyVersions();
-  }, []);
-
-  async function refreshPolicyVersions() {
-    try {
-      const versions = await listPolicyVersions();
-      setPolicyVersions(versions);
-    } catch {
-      setPolicyVersions([]);
-    }
-  }
 
   async function openPolicy(policy: string) {
     try {
@@ -56,7 +50,7 @@ export function PoliciesPage() {
     setNotice(null);
     try {
       await uploadPolicyDocument(file);
-      await refreshPolicyVersions();
+      await mutatePolicyVersions();
       // Show a succinct confirmation; do not surface chunk details in the UI
       setNotice({ kind: "success", text: `Uploaded ${file.name} — available in the policy library.` });
     } catch (error) {
@@ -72,7 +66,7 @@ export function PoliciesPage() {
   async function togglePolicy(policy: PolicyReference) {
     try {
       const updated = await togglePolicyReference(policy.id, !(policy.enabled ?? true));
-      setPolicyVersions((items) => items.map((item) => (item.id === updated.id ? updated : item)));
+      await mutatePolicyVersions((items) => items?.map((item) => (item.id === updated.id ? updated : item)), { revalidate: false });
       setNotice({ kind: "success", text: `${updated.policy} is now ${updated.enabled ? "enabled" : "disabled"} at version ${updated.version}.` });
     } catch (error) {
       setNotice({ kind: "error", text: `Could not update policy. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
@@ -84,7 +78,7 @@ export function PoliciesPage() {
     try {
       await deletePolicyDocument(policy.policy);
       setNotice({ kind: "success", text: `${policy.policy} has been deleted.` });
-      await refreshPolicyVersions();
+      await mutatePolicyVersions();
     } catch (error) {
       setNotice({ kind: "error", text: `Could not delete policy. ${error instanceof Error ? error.message.slice(0, 120) : ""}` });
     }

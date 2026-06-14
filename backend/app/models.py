@@ -13,6 +13,7 @@ class PolicyReference(BaseModel):
     policy: str
     section: str
     owner: str
+    department: str = "All"
     text: str
     score: float = 0
     enabled: bool = True

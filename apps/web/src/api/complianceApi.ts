@@ -4,7 +4,6 @@ import {
   type Employee,
   type HealthResponse,
   type PolicyComparison,
-  type PolicyFileView,
   type PolicyReference,
   type ReportSummary,
   type RewriteResponse,
@@ -16,6 +15,9 @@ const API_BASE_URL = "http://localhost:8000";
 
 async function getAuthHeaders(headers?: HeadersInit) {
   const nextHeaders = new Headers(headers);
+  if (firebaseServices) {
+    await firebaseServices.auth.authStateReady();
+  }
   const token = await firebaseServices?.auth.currentUser?.getIdToken();
 
   if (token) {
@@ -140,7 +142,7 @@ export async function comparePolicyVersions(policy: string) {
 }
 
 export async function viewPolicyFile(policy: string) {
-  return requestJson<PolicyFileView>(`/policies/view?policy=${encodeURIComponent(policy)}`);
+  return requestJson<any>(`/policies/view?policy=${encodeURIComponent(policy)}`);
 }
 
 export function getPolicyFileUrl(policy: string, version?: number) {

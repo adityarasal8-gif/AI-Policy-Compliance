@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@complylens/shared": "0.1.0",
-    "firebase": "^12.13.0"
+    "firebase": "^12.13.0",
+    "swr": "^2.4.1"
   }
 }

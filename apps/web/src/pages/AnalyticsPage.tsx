@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
 import { AlertTriangle, BarChart3, CheckCircle2, ClipboardCheck, MessageSquareWarning, RefreshCw, TrendingDown, UserCheck } from "lucide-react";
 import type { ReportSummary } from "@complylens/shared";
 import { useAuth } from "../auth/useAuth";
@@ -30,27 +31,13 @@ const initialSummary: ReportSummary = {
 
 function ReportsView({ role }: { role: "admin" | "employee" }) {
   const [department, setDepartment] = useState("All");
-  const [summary, setSummary] = useState<ReportSummary>(initialSummary);
-  const [loading, setLoading] = useState(true);
+  const { data: summaryData, isLoading: loading } = useSWR(
+    ["reportSummary", role, department],
+    () => getReportSummary(role, department),
+    { fallbackData: initialSummary }
+  );
+  const summary = summaryData as ReportSummary;
   const isAdmin = role === "admin";
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getReportSummary(role, department)
-      .then((data) => {
-        if (active) setSummary(data);
-      })
-      .catch(() => {
-        if (active) setSummary({ ...initialSummary, role });
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [department, role]);
 
   const maxTrend = useMemo(() => Math.max(...summary.trend, 1), [summary.trend]);
   const metricByLabel = (label: string) => summary.metrics.find((metric) => metric.label === label);

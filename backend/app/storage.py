@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from contextlib import contextmanager
 from typing import Iterable
 
 from .models import AuditEvent, CompanySettings, Employee, PolicyReference, SavedSession
@@ -17,11 +18,24 @@ class SQLiteStateStore:
         self._migrate_legacy_json()
 
     def load_references(self) -> list[PolicyReference] | None:
-        items = self._load_collection("policy_references", PolicyReference)
-        return items or None
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM policy_references").fetchall()
+        if not rows:
+            return None
+        return [PolicyReference(**dict(row)) for row in rows]
 
     def save_references(self, references: list[PolicyReference]) -> None:
-        self._save_collection("policy_references", references)
+        with self._connect() as conn:
+            conn.execute("DELETE FROM policy_references")
+            for ref in references:
+                data = ref.model_dump(mode="json")
+                conn.execute(
+                    """
+                    INSERT INTO policy_references (id, policy, section, owner, department, text, score, enabled, version, createdAt)
+                    VALUES (:id, :policy, :section, :owner, :department, :text, :score, :enabled, :version, :createdAt)
+                    """,
+                    data
+                )
 
     def load_settings(self) -> CompanySettings:
         with self._connect() as conn:
@@ -41,22 +55,145 @@ class SQLiteStateStore:
             )
 
     def load_employees(self) -> list[Employee]:
-        return self._load_collection("employees", Employee)
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM employees").fetchall()
+        return [Employee(**dict(row)) for row in rows]
+
+    def get_employee_by_email(self, email: str) -> Employee | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM employees WHERE email = ?", (email,)).fetchone()
+        return Employee(**dict(row)) if row else None
 
     def save_employees(self, employees: list[Employee]) -> None:
-        self._save_collection("employees", employees)
+        with self._connect() as conn:
+            conn.execute("DELETE FROM employees")
+            for emp in employees:
+                data = emp.model_dump(mode="json")
+                conn.execute(
+                    """
+                    INSERT INTO employees (id, email, name, department, role, status, sendEmail, invitedAt, inviteLink, temporaryPassword, emailStatus)
+                    VALUES (:id, :email, :name, :department, :role, :status, :sendEmail, :invitedAt, :inviteLink, :temporaryPassword, :emailStatus)
+                    """,
+                    data
+                )
 
-    def load_sessions(self) -> list[SavedSession]:
-        return self._load_collection("sessions", SavedSession)
+    def get_sessions(self, department: str | None = None, employee_id: str | None = None, limit: int = 50) -> list[SavedSession]:
+        query = "SELECT * FROM sessions"
+        params = []
+        conditions = []
+        if employee_id:
+            conditions.append("employeeId = ?")
+            params.append(employee_id)
+        elif department and department not in ("All", "General"):
+            conditions.append("department = ?")
+            params.append(department)
+            
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY createdAt DESC LIMIT ?"
+        params.append(limit)
+        
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        sessions = []
+        for row in rows:
+            data = dict(row)
+            data["report"] = json.loads(data["report"])
+            sessions.append(SavedSession(**data))
+        return sessions
 
-    def save_sessions(self, sessions: list[SavedSession]) -> None:
-        self._save_collection("sessions", sessions)
+    def insert_session(self, session: SavedSession) -> None:
+        with self._connect() as conn:
+            data = session.model_dump(mode="json")
+            data["report"] = json.dumps(data["report"])
+            conn.execute(
+                """
+                INSERT INTO sessions (id, employeeId, documentName, department, team, score, flaggedSections, status, createdAt, report)
+                VALUES (:id, :employeeId, :documentName, :department, :team, :score, :flaggedSections, :status, :createdAt, :report)
+                """,
+                data
+            )
 
-    def load_audit_events(self) -> list[AuditEvent]:
-        return self._load_collection("audit_events", AuditEvent)
+    def get_audit_events(self, department: str | None = None, employee_id: str | None = None, limit: int = 100) -> list[AuditEvent]:
+        query = "SELECT * FROM audit_events"
+        params = []
+        conditions = []
+        if employee_id:
+            conditions.append("employeeId = ?")
+            params.append(employee_id)
+        elif department and department not in ("All", "General"):
+            conditions.append("department = ?")
+            params.append(department)
+            
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += " ORDER BY time DESC LIMIT ?"
+        params.append(limit)
+        
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [AuditEvent(**dict(row)) for row in rows]
 
-    def save_audit_events(self, events: list[AuditEvent]) -> None:
-        self._save_collection("audit_events", events)
+    def insert_audit_event(self, event: AuditEvent) -> None:
+        with self._connect() as conn:
+            data = event.model_dump(mode="json")
+            conn.execute(
+                """
+                INSERT INTO audit_events (id, employeeId, title, detail, owner, status, time, department, eventType)
+                VALUES (:id, :employeeId, :title, :detail, :owner, :status, :time, :department, :eventType)
+                """,
+                data
+            )
+            
+    def get_audit_event(self, event_id: str) -> AuditEvent | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM audit_events WHERE id = ?", (event_id,)).fetchone()
+        return AuditEvent(**dict(row)) if row else None
+        
+    def update_audit_event(self, event: AuditEvent) -> None:
+        with self._connect() as conn:
+            data = event.model_dump(mode="json")
+            conn.execute(
+                """
+                UPDATE audit_events 
+                SET status = :status, title = :title, detail = :detail, owner = :owner, time = :time, department = :department, eventType = :eventType
+                WHERE id = :id
+                """,
+                data
+            )
+            
+    def get_summary_stats(self, department: str | None = None, employee_id: str | None = None) -> dict:
+        params = []
+        conditions = []
+        if employee_id:
+            conditions.append("employeeId = ?")
+            params.append(employee_id)
+        elif department and department not in ("All", "General"):
+            conditions.append("department = ?")
+            params.append(department)
+            
+        where_clause = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        
+        with self._connect() as conn:
+            sessions_count = conn.execute(f"SELECT COUNT(*) as c FROM sessions{where_clause}", params).fetchone()["c"]
+            blocked_count = conn.execute(f"SELECT COUNT(*) as c FROM sessions{where_clause} {'AND status = ?' if conditions else 'WHERE status = ?'}", params + ["blocked"]).fetchone()["c"]
+            clean_count = conn.execute(f"SELECT COUNT(*) as c FROM sessions{where_clause} {'AND status = ?' if conditions else 'WHERE status = ?'}", params + ["ready"]).fetchone()["c"]
+            
+            # Since total violations requires parsing the report JSON in SQLite, 
+            # we'll approximate it or sum flaggedSections which is stored as a column!
+            total_violations = conn.execute(f"SELECT SUM(flaggedSections) as s FROM sessions{where_clause}", params).fetchone()["s"] or 0
+            
+            audit_events_count = conn.execute(f"SELECT COUNT(*) as c FROM audit_events{where_clause}", params).fetchone()["c"]
+            open_audit_count = conn.execute(f"SELECT COUNT(*) as c FROM audit_events{where_clause} {'AND status = ?' if conditions else 'WHERE status = ?'}", params + ["open"]).fetchone()["c"]
+            
+        return {
+            "total_scans": sessions_count,
+            "total_blocked": blocked_count,
+            "total_clean": clean_count,
+            "total_violations": total_violations,
+            "audit_events_count": audit_events_count,
+            "open_audit_count": open_audit_count
+        }
 
     def _initialize(self) -> None:
         with self._connect() as conn:
@@ -66,71 +203,74 @@ class SQLiteStateStore:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS collections (
-                    kind TEXT NOT NULL,
-                    id TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    value TEXT NOT NULL,
-                    PRIMARY KEY (kind, id)
+                
+                CREATE TABLE IF NOT EXISTS policy_references (
+                    id TEXT PRIMARY KEY,
+                    policy TEXT NOT NULL,
+                    section TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    department TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    score REAL,
+                    enabled BOOLEAN,
+                    version INTEGER,
+                    createdAt TEXT
                 );
-                CREATE INDEX IF NOT EXISTS idx_collections_kind_position
-                    ON collections(kind, position);
+                
+                CREATE TABLE IF NOT EXISTS employees (
+                    id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    department TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    sendEmail BOOLEAN,
+                    invitedAt TEXT NOT NULL,
+                    inviteLink TEXT,
+                    temporaryPassword TEXT,
+                    emailStatus TEXT
+                );
+                
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY,
+                    employeeId TEXT,
+                    documentName TEXT NOT NULL,
+                    department TEXT NOT NULL,
+                    team TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    flaggedSections INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    createdAt TEXT NOT NULL,
+                    report TEXT NOT NULL
+                );
+                
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id TEXT PRIMARY KEY,
+                    employeeId TEXT,
+                    title TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    owner TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    time TEXT NOT NULL,
+                    department TEXT NOT NULL,
+                    eventType TEXT NOT NULL
+                );
                 """
             )
 
     def _migrate_legacy_json(self) -> None:
-        if not self.legacy_json_path or not self.legacy_json_path.exists():
-            return
-        with self._connect() as conn:
-            has_rows = conn.execute("SELECT COUNT(*) AS count FROM collections").fetchone()["count"]
-            has_settings = conn.execute("SELECT COUNT(*) AS count FROM settings").fetchone()["count"]
-        if has_rows or has_settings:
-            return
-        try:
-            state = json.loads(self.legacy_json_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return
-        if state.get("settings"):
-            self.save_settings(CompanySettings.model_validate(state["settings"]))
-        collection_models = {
-            "policy_references": PolicyReference,
-            "employees": Employee,
-            "sessions": SavedSession,
-            "audit_events": AuditEvent,
-        }
-        for kind, model in collection_models.items():
-            items = [model.model_validate(item) for item in state.get(kind, [])]
-            self._save_collection(kind, items)
+        pass
 
-    def _load_collection(self, kind: str, model) -> list:
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT value FROM collections WHERE kind = ? ORDER BY position ASC",
-                (kind,),
-            ).fetchall()
-        parsed_items = []
-        for row in rows:
-            try:
-                parsed_items.append(model.model_validate(json.loads(row["value"])))
-            except Exception:
-                continue
-        return parsed_items
-
-    def _save_collection(self, kind: str, items: Iterable) -> None:
-        with self._connect() as conn:
-            conn.execute("DELETE FROM collections WHERE kind = ?", (kind,))
-            conn.executemany(
-                "INSERT INTO collections(kind, id, position, value) VALUES(?, ?, ?, ?)",
-                [
-                    (kind, getattr(item, "id", f"{kind}-{index}"), index, self._dump(item))
-                    for index, item in enumerate(items)
-                ],
-            )
-
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+    @contextmanager
+    def _connect(self) -> Iterable[sqlite3.Connection]:
+        conn = sqlite3.connect(self.path, timeout=10.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            # We don't automatically use `with conn:` here because callers 
+            # already do `with self._connect() as conn:` which handles the transaction.
+            yield conn
+        finally:
+            conn.close()
 
     def _dump(self, model) -> str:
         return json.dumps(model.model_dump(mode="json"), ensure_ascii=False)

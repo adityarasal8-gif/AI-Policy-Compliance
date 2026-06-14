@@ -64,6 +64,15 @@ def _sanitize_report(report: ComplianceReport) -> ComplianceReport:
     return report.model_copy(update={"violations": sanitized_violations})
 
 
+def _sanitize_session(session: SavedSession) -> SavedSession:
+    return session.model_copy(
+        update={
+            "report": _sanitize_report(session.report),
+            "documentName": _redact_text(session.documentName or "")
+        }
+    )
+
+
 class ComplianceService:
     def __init__(self, data_path: Path) -> None:
         self.storage = SQLiteStateStore(data_path, legacy_json_path=data_path.with_name("state.json"))
@@ -74,9 +83,6 @@ class ComplianceService:
         if saved_references:
             self.policy_store.load_references(saved_references)
         self.settings = self.storage.load_settings()
-        self.employees = self.storage.load_employees()
-        self.sessions = self.storage.load_sessions()
-        self.audit_events = self.storage.load_audit_events()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -90,11 +96,11 @@ class ComplianceService:
         self.storage.save_settings(settings)
         return settings
 
-    def upload_policy(self, text: str, policy_name: str, section: str, owner: str, *, raw_bytes: bytes | None = None, original_filename: str | None = None) -> list[PolicyReference]:
+    def upload_policy(self, text: str, policy_name: str, section: str, owner: str, department: str = "All", *, raw_bytes: bytes | None = None, original_filename: str | None = None) -> list[PolicyReference]:
         version = 1 + max(
             [reference.version for reference in self.policy_store.references if reference.policy == policy_name] or [0]
         )
-        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner, version=version, createdAt=self._now())
+        references = self.policy_store.add_policy_text(text=text, policy=policy_name, section=section, owner=owner, department=department, version=version, createdAt=self._now())
         self.storage.save_references(self.policy_store.references)
         if raw_bytes is not None:
             self._save_policy_file(policy_name, version, raw_bytes, original_filename)
@@ -114,7 +120,7 @@ class ComplianceService:
         default_threshold = CompanySettings().threshold
         if threshold == default_threshold and self.settings.threshold != default_threshold:
             threshold = self.settings.threshold
-        report = analyze_text(payload.text, self.policy_store, threshold)
+        report = analyze_text(payload.text, self.policy_store, threshold, department=payload.department)
         self.save_session(payload, report, employee_id=employee_id)
         return report
 
@@ -132,8 +138,7 @@ class ComplianceService:
             createdAt=self._now(),
             report=stored_report,
         )
-        self.sessions = [session, *self.sessions[:49]]
-        self.storage.save_sessions(self.sessions)
+        self.storage.insert_session(session)
         self.add_audit_event(
             title="Document analyzed",
             detail=f"{report.flaggedSections} issues found, score {report.score}.",
@@ -145,12 +150,8 @@ class ComplianceService:
         return session
 
     def list_sessions(self, department: str | None = None, employee_id: str | None = None) -> list[SavedSession]:
-        sessions = self.sessions
-        if employee_id:
-            sessions = [s for s in sessions if s.employeeId == employee_id]
-        if not department or department == "All":
-            return sessions
-        return [session for session in sessions if session.department == department]
+        sessions = self.storage.get_sessions(department, employee_id, limit=50)
+        return [_sanitize_session(s) for s in sessions]
 
     def invite_employee(self, payload: EmployeeInvite) -> Employee:
         invite_token = secrets.token_urlsafe(18)
@@ -211,16 +212,17 @@ class ComplianceService:
             return "failed"
 
     def list_employees(self) -> list[Employee]:
-        return [_sanitize_employee(employee) for employee in self.employees]
+        return [_sanitize_employee(employee) for employee in self.storage.load_employees()]
 
     def update_employee_status(self, employee_id: str, status: str) -> Employee:
         if status not in EMPLOYEE_STATUSES:
             raise ValueError("Invalid status")
-        for index, employee in enumerate(self.employees):
+        employees = self.storage.load_employees()
+        for index, employee in enumerate(employees):
             if employee.id == employee_id:
                 updated = employee.model_copy(update={"status": status})
-                self.employees[index] = updated
-                self.storage.save_employees([_sanitize_employee(item) for item in self.employees])
+                employees[index] = updated
+                self.storage.save_employees(employees)
                 return _sanitize_employee(updated)
         raise ValueError("Employee not found")
 
@@ -366,47 +368,49 @@ class ComplianceService:
             department=department,
             eventType=event_type,  # type: ignore[arg-type]
         )
-        self.audit_events = [event, *self.audit_events[:99]]
-        self.storage.save_audit_events(self.audit_events)
+        self.storage.insert_audit_event(event)
         return event
 
     def list_audit_events(self, department: str | None = None, employee_id: str | None = None) -> list[AuditEvent]:
-        if not self.audit_events:
-            return []
-        events = self.audit_events
-        if employee_id:
-            events = [e for e in events if e.employeeId == employee_id]
-        if not department or department == "All":
-            return events
-        return [event for event in events if event.department == department]
+        events = self.storage.get_audit_events(department, employee_id, limit=100)
+        return events
 
     def mark_audit_reviewed(self, event_id: str) -> AuditEvent:
-        for index, event in enumerate(self.audit_events):
-            if event.id == event_id:
-                updated = event.model_copy(update={"status": "reviewed"})
-                self.audit_events[index] = updated
-                self.storage.save_audit_events(self.audit_events)
-                return updated
+        event = self.storage.get_audit_event(event_id)
+        if event:
+            updated = event.model_copy(update={"status": "reviewed"})
+            self.storage.update_audit_event(updated)
+            return updated
         raise ValueError("Audit event not found")
 
     def report_summary(self, role: str = "admin", department: str | None = None, employee_id: str | None = None) -> ReportSummary:
-        sessions = self.list_sessions(department if role == "employee" else department, employee_id=employee_id if role == "employee" else None)
-        events = self.list_audit_events(department if department else None, employee_id=employee_id if role == "employee" else None)
+        dept = department if department and department != "All" else None
+        emp_id = employee_id if role == "employee" else None
+        
+        stats = self.storage.get_summary_stats(dept, emp_id)
+        sessions = self.storage.get_sessions(dept, emp_id, limit=50)
+        events = self.storage.get_audit_events(dept, emp_id, limit=50)
+        
         if role == "employee":
             events = [event for event in events if event.eventType in {"scan", "rewrite"}]
-        total_checks = len(sessions)
-        risk_prevented = sum(session.flaggedSections for session in sessions)
-        clean_sessions = len([session for session in sessions if session.flaggedSections == 0])
-        blocked_sessions = len([session for session in sessions if session.status == "blocked"])
+            
+        total_checks = stats["total_scans"]
+        risk_prevented = stats["total_violations"]
+        clean_sessions = stats["total_clean"]
+        blocked_sessions = stats["total_blocked"]
+        
         rewrite_candidates = sum(len(session.report.violations) for session in sessions)
         high_risk = sum(1 for session in sessions for violation in session.report.violations if violation.severity in {"high", "critical"})
-        avg_score = round(sum(session.score for session in sessions) / total_checks) if total_checks else 100
+        
+        avg_score = round(sum(session.score for session in sessions) / len(sessions)) if sessions else 100
         clean_rate = round((clean_sessions / total_checks) * 100) if total_checks else 100
         risk_value = risk_prevented * 850 + high_risk * 2400 + blocked_sessions * 1800
-        open_events = len([event for event in events if event.status == "open"])
+        
+        open_events = stats["open_audit_count"]
         employees = self.list_employees()
         invited_users = len(employees)
         active_users = len([employee for employee in employees if employee.status == "active"])
+        
         if role == "admin":
             metrics = [
                 ReportMetric(label="Risk value protected", value=risk_value, suffix="$", delta="estimated exposure avoided", tone="success"),
